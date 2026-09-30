@@ -23,6 +23,17 @@ archives:
     files: [README.md, LICENSE, config.example.yaml]
 checksum:
   name_template: checksums.txt
+# The authenticated checksum manifest covers all release archives.
+# Snapshot builds skip signing: they have no GitHub OIDC release identity.
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
 changelog:
   sort: asc
 
@@ -43,7 +54,7 @@ homebrew_casks:
       executable: tailctl
       shell_parameter_format: cobra
       shells: [bash, zsh, fish]
-    # Initial binaries are unsigned. Limit quarantine removal to this binary.
+    # Cosign signatures do not provide Apple signing/notarisation. Limit quarantine removal to this binary.
     hooks:
       post:
         install: |

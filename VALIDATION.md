@@ -34,3 +34,13 @@ A live `brew install` has not yet been exercised. The release workflow includes 
 - A new GoReleaser snapshot built Linux, macOS and Windows binaries on amd64 and arm64, then generated the Homebrew cask. GoReleaser configuration validation passed.
 - Native OS keychain APIs were mocked for automated tests; live macOS/Windows keychain round trips were not performed in this Linux environment.
 - Login stores API tokens; it does not perform OAuth browser login or token refresh.
+
+## Dependency maintenance and release signing
+
+- Dependabot configuration parses as YAML and covers Go modules and GitHub Actions, with weekly UK-time scheduling and separate security update groups.
+- Workflow action pins were resolved against current upstream release commits: checkout v7.0.1, setup-go v7.0.0, goreleaser-action v7.2.3 and cosign-installer v4.1.2. The installer manages its bundled Cosign version (currently v3.0.6); GoReleaser remains pinned at v2.18.2.
+- Actionlint v1.7.12 passes for both workflows. GoReleaser v2.18.2 `check` passes. All configuration files parse as YAML.
+- `go test -race ./...`, `go vet ./...`, generation drift checks and `git diff --check` pass.
+- `goreleaser release --snapshot --clean --skip=sign` builds all six platform/architecture archives; `sha256sum --check checksums.txt` verifies all six.
+- GitHub OIDC signing cannot be exercised in a local snapshot. The next tagged release must publish `checksums.txt.sigstore.json` and pass the exact workflow/tag identity verification step. No signed release was created during this change.
+- Dependabot security update groups apply when repository Dependabot alerts/security updates are enabled. Toolchain/GoReleaser version changes and upstream API schema refreshes remain explicit maintainer tasks, as documented in README.md.

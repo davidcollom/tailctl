@@ -305,13 +305,40 @@ GitHub Actions runs race-enabled tests, vet and build on Linux, macOS and Window
 
 ```sh
 goreleaser check
-goreleaser release --snapshot --clean
+goreleaser release --snapshot --clean --skip=sign
 # Once this source is in your repository and CI passes:
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Create and push a version tag only when you intend to publish a release. The workflow uses the repository's `GITHUB_TOKEN` with `contents: write`; it does not require a personal access token. Completed releases appear on the [Releases page](https://github.com/davidcollom/tailctl/releases). Snapshot output is excluded from source control. CI runs with read-only repository permissions; the release job grants write access only for publishing release assets.
+Create and push a version tag only when you intend to publish a release. The workflow uses the repository's `GITHUB_TOKEN` with `contents: write`; it does not require a personal access token. Completed releases appear on the [Releases page](https://github.com/davidcollom/tailctl/releases). Snapshot output is excluded from source control. CI runs with read-only repository permissions. Only the release job grants `contents: write` for release assets and the Homebrew cask, and `id-token: write` for keyless signing.
+
+### Verify release downloads
+
+Tagged releases sign `checksums.txt` with Cosign using GitHub Actions OIDC. No signing key, password or signing secret is stored in the repository. GoReleaser publishes `checksums.txt.sigstore.json`, which contains the signature, certificate and transparency-log evidence. The authenticated SHA-256 manifest covers every release archive. The release workflow also verifies the bundle and all local archive checksums before reporting success.
+
+Install [Cosign 3](https://docs.sigstore.dev/cosign/system_config/installation/) and download `checksums.txt`, `checksums.txt.sigstore.json` and your archive from the **same release**. Set the exact release tag below:
+
+```sh
+TAG=v0.1.0  # Replace with the release you downloaded.
+cosign verify-blob \
+  --certificate-identity "https://github.com/davidcollom/tailctl/.github/workflows/release.yaml@refs/tags/$TAG" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --bundle checksums.txt.sigstore.json checksums.txt
+
+# Run only after signature verification succeeds (Linux/GNU coreutils).
+sha256sum --check --ignore-missing checksums.txt
+```
+
+On macOS, check the downloaded archive with `shasum -a 256 <archive>` against its entry in the verified manifest. On Windows, use `Get-FileHash <archive> -Algorithm SHA256`. Confirm the exact archive filename and digest match before extracting or running it. Do not disable certificate identity, issuer or transparency-log verification.
+
+Homebrew checks archive SHA-256 values from the generated cask; it does not perform Cosign verification automatically. Cosign signing is separate from Apple Developer ID signing/notarisation and Windows Authenticode. Snapshot builds skip signing and are for local testing. Public Sigstore records include the repository/workflow identity, even while the repository is private. The first tagged release after this change will exercise the real GitHub OIDC signing flow.
+
+### Dependency maintenance
+
+Dependabot checks Go modules (including the pinned OpenAPI generator) and GitHub Actions every Monday at 08:00 UK time. Go minor/patch updates are grouped; major Go dependency upgrades remain separate for review. Action updates are grouped, and workflow actions are pinned to full commit SHAs. Security updates have separate groups and require **Dependabot alerts and security updates** to be enabled in the repository's Settings → Advanced Security.
+
+Updates open pull requests and run normal CI; they are not automatically merged. Generator upgrades may require `go generate ./...` and committing generated changes before CI passes. The Tailscale schema still requires an explicit `go run ./cmd/update-schema` refresh and review. The Go toolchain in `go.mod` and the GoReleaser binary version in both workflows are maintained explicitly; Dependabot does not update arbitrary workflow `with.version` values. Cosign uses the installer action's bundled version, so its version follows reviewed installer updates.
 
 ## Troubleshooting
 
