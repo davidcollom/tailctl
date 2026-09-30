@@ -3,7 +3,8 @@ tailnet: '-'
 server: https://api.tailscale.com/api/v2
 output: table
 timeout: 30s
-# Prefer TAILCTL_TOKEN, supplied by your shell or secret manager.
+# Use tailctl login for secure OS credential storage.
+# Use TAILCTL_TOKEN from your secret manager for automation; it overrides saved credentials.
 # token: tskey-api-...
 # plugin_dirs:
 #   - /absolute/path/to/your/plugins

@@ -16,6 +16,7 @@ import (
 	"github.com/davidcollom/tailctl/pkg/api"
 	"github.com/davidcollom/tailctl/pkg/client"
 	"github.com/davidcollom/tailctl/pkg/config"
+	"github.com/davidcollom/tailctl/pkg/credentials"
 	"github.com/davidcollom/tailctl/pkg/output"
 	"github.com/davidcollom/tailctl/pkg/plugin"
 	"github.com/spf13/cobra"
@@ -30,22 +31,44 @@ type Options struct {
 	Version    string
 	ConfigPath string
 	Extensions []Extension
+	// Credentials defaults to the system keychain; inject a fake for tests.
+	Credentials credentials.Store
 }
 type Runtime struct {
-	Config    config.Config
-	Viper     *viper.Viper
-	noHeaders bool
-	sortBy    string
+	Config      config.Config
+	Viper       *viper.Viper
+	Credentials credentials.Store
+	noHeaders   bool
+	sortBy      string
 }
 
 func (r *Runtime) Client() (*client.Client, error) {
-	return client.New(client.Options{Token: r.Config.Token, Tailnet: r.Config.Tailnet, Server: r.Config.Server, Timeout: r.Config.Timeout})
+	token := r.Config.Token
+	if token == "" {
+		store := r.Credentials
+		if store == nil {
+			store = credentials.System{}
+		}
+		var err error
+		token, err = store.Get(r.Config.Server)
+		if errors.Is(err, credentials.ErrNotFound) {
+			return nil, errors.New("API token required: run tailctl login or set TAILCTL_TOKEN")
+		}
+		if err != nil {
+			return nil, errors.New("OS credential store unavailable; unlock or enable it, or supply TAILCTL_TOKEN for this process")
+		}
+	}
+	return client.New(client.Options{Token: token, Tailnet: r.Config.Tailnet, Server: r.Config.Server, Timeout: r.Config.Timeout})
 }
 func (r *Runtime) Print(cmd *cobra.Command, value any, columns []output.Column) error {
 	return output.Write(cmd.OutOrStdout(), value, output.Options{Format: r.Config.Output, NoHeaders: r.noHeaders, SortBy: r.sortBy, Columns: columns})
 }
 func NewRoot(o Options) (*cobra.Command, error) {
-	r := &Runtime{}
+	store := o.Credentials
+	if store == nil {
+		store = credentials.System{}
+	}
+	r := &Runtime{Credentials: store}
 	path := o.ConfigPath
 	root := &cobra.Command{Use: "tailctl", Short: "Manage the Tailscale API with readable output and extensible commands", Version: o.Version, SilenceUsage: true, SilenceErrors: true}
 	flags := root.PersistentFlags()
@@ -77,7 +100,7 @@ func NewRoot(o Options) (*cobra.Command, error) {
 		r.Viper = v
 		return nil
 	}
-	root.AddCommand(getCommand(r), apiCommand(r), configCommand(r, &path), pluginCommand(r))
+	root.AddCommand(getCommand(r), apiCommand(r), configCommand(r, &path), pluginCommand(r), loginCommand(r), logoutCommand(r))
 	for _, ext := range o.Extensions {
 		cmd, err := ext.Command(r)
 		if err != nil {
@@ -327,7 +350,7 @@ func configCommand(r *Runtime, path *string) *cobra.Command {
 		return err
 	}})
 	command.AddCommand(&cobra.Command{Use: "view", Short: "Show effective configuration with token redacted", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		token := "<unset>"
+		token := "<keychain lookup deferred>"
 		if r.Config.Token != "" {
 			token = "<redacted>"
 		}

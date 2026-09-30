@@ -8,13 +8,14 @@ An extensible Tailscale API CLI and Go SDK, built with Cobra and Viper.
 - Complete typed client generated from the supplied upstream OpenAPI 3.1 schema.
 - Common resource commands with kubectl-style tables, wide, JSON and YAML output.
 - Go command extensions and cross-platform executable plugins.
-- Home-directory configuration, environment overrides and explicit mutation guards.
+- Home-directory configuration, secure OS credential storage and explicit mutation guards.
 - Homebrew installation on macOS and Linux from the same repository.
 - Reproducible `go generate`, GitHub Actions and GoReleaser v2 releases.
 
 ## Contents
 
 - [Installation and quick start](#installation-and-quick-start)
+- [Login and logout](#login-and-logout)
 - [Configuration](#configuration)
 - [Shell completion](#shell-completion)
 - [Every API operation](#every-api-operation)
@@ -67,8 +68,8 @@ go install ./cmd/tailctl
 go mod download
 go build -trimpath -o bin/tailctl ./cmd/tailctl
 
-# Supply an API access token or an already-issued OAuth access token.
-export TAILCTL_TOKEN='tskey-api-...'
+# Save an API access token securely (hidden interactive prompt).
+bin/tailctl login
 export TAILCTL_TAILNET='example.com'
 
 bin/tailctl get devices
@@ -92,7 +93,7 @@ On Windows, the equivalent PowerShell setup is:
 
 ```powershell
 go build -trimpath -o bin/tailctl.exe ./cmd/tailctl
-$env:TAILCTL_TOKEN = 'tskey-api-...'
+.\bin\tailctl.exe login
 $env:TAILCTL_TAILNET = 'example.com'
 .\bin\tailctl.exe get devices -o wide
 ```
@@ -100,6 +101,37 @@ $env:TAILCTL_TAILNET = 'example.com'
 Tokens can also be supplied by a secret manager; avoid committing credentials or pasting real tokens into examples. The CLI talks to the Tailscale **control-plane HTTP API**; it does not require a local `tailscaled` daemon and does not replace the Tailscale network client.
 
 `devices`, `device` and `nodes` are aliases. Other built-in resources are `users`, `keys`, `services`, `dns`, `settings` and `policy`. Tables use explicit columns; `-o json` and `-o yaml` retain all fields. `--no-headers` and `--sort-by FIELD` apply to tables. Sorting is lexicographic by the original top-level JSON field and does not change JSON/YAML ordering. Cobra also supplies `help`, `completion` and `--version`.
+
+## Login and logout
+
+```sh
+tailctl login             # Hidden prompt; saves the token in the OS credential store.
+tailctl get devices       # Uses the saved token automatically.
+tailctl logout            # Deletes the saved token for the selected API server.
+```
+
+Paste a **Tailscale API access token** from the admin console, or an already-issued OAuth access token. Device enrolment keys (`tskey-auth-...`) cannot access the control-plane API and are rejected. `login` stores the supplied token; it does not launch a browser/OAuth flow, acquire or refresh OAuth tokens, or verify that the token has permissions for a particular operation. Authentication and permission failures are reported when you make an API request.
+
+| Platform | Credential backend |
+| --- | --- |
+| macOS | OS Keychain, via the system `security` utility |
+| Windows | Windows Credential Manager |
+| Linux | Secret Service over the user's session D-Bus, such as GNOME Keyring |
+
+Credentials are stored under service `tailctl`, with the canonical API server URL as the account. Trailing slashes, hostname case and default ports are normalised. A token saved for the Tailscale API is not automatically reused for another `--server`. All tailnets accessed through that server use the same saved token; named login profiles are not currently implemented.
+
+For noninteractive input, pipe a token from your secret manager or an existing environment variable:
+
+```sh
+printf '%s' "$TAILCTL_TOKEN" | tailctl login --token-stdin
+unset TAILCTL_TOKEN
+```
+
+There is no `--token` argument and no token is printed or written to YAML. API commands resolve authentication in this order: **`TAILCTL_TOKEN` → configured YAML token → saved OS credential**. Login warns when an environment/config token overrides the newly saved token. `config view` redacts configured tokens and reports deferred keychain lookup when none is configured; it does not read the keychain. Metadata commands such as `api list`, completion and help also avoid credential prompts.
+
+On headless Linux, containers or an SSH session without Secret Service, use `TAILCTL_TOKEN` supplied by your automation/secret manager. `login` fails clearly if secure OS storage is unavailable and **never falls back to a plaintext file**. A Linux desktop keyring must be running and unlocked; installing only `libsecret-tools` does not create the keyring service.
+
+`logout` is idempotent and removes only the local saved token for the selected API server. It does not revoke the token in Tailscale, remove another server's token, modify YAML, or unset your shell's environment. If an environment/config token remains active, logout warns about it; remove that override separately. External plugins are not given saved keychain tokens automatically. In-process Go extensions use the shared authenticated client. Test code can supply `cli.Options.Credentials` with a fake `credentials.Store` without accessing the OS keychain.
 
 ## Configuration
 
@@ -110,7 +142,7 @@ tailnet: '-'
 server: https://api.tailscale.com/api/v2
 output: table
 timeout: 30s
-# Prefer TAILCTL_TOKEN rather than storing token here.
+# Use tailctl login for secure OS storage, or TAILCTL_TOKEN for automation.
 ```
 
 Precedence: **changed flags → environment → YAML file → defaults**. Missing default configuration is fine; an explicitly selected missing file is an error.
@@ -118,14 +150,14 @@ Precedence: **changed flags → environment → YAML file → defaults**. Missin
 | Setting | Environment | Flag |
 | --- | --- | --- |
 | Tailnet | `TAILCTL_TAILNET` | `--tailnet` |
-| API token | `TAILCTL_TOKEN` | No token flag, avoiding command-history exposure |
+| API token | `TAILCTL_TOKEN` (override) | `login` / `logout` manage secure OS storage |
 | API server | `TAILCTL_SERVER` | `--server` |
 | Output | `TAILCTL_OUTPUT` | `-o`, `--output` |
 | HTTP timeout | `TAILCTL_TIMEOUT` | `--timeout` |
 | Config file | `TAILCTL_CONFIG` | `--config` |
 | Plugin directories | `TAILCTL_PLUGIN_DIRS` (space-separated) | YAML `plugin_dirs` |
 
-`tailctl config path` prints the selected path. `tailctl config view -o yaml` prints effective settings with the token redacted. If storing credentials in YAML, restrict permissions (`chmod 600` on Unix). A scoped, already-issued OAuth access token works as a bearer token; acquiring or refreshing OAuth tokens is outside this implementation.
+`tailctl config path` prints the selected path. `tailctl config view -o yaml` prints effective settings with the token redacted. If storing credentials in YAML, restrict permissions (`chmod 600` on Unix). A scoped, already-issued OAuth access token works as a bearer token; acquiring or refreshing OAuth tokens is outside this implementation. Prefer `tailctl login` for local use and keep only non-secret settings in this file.
 
 ## Shell completion
 
@@ -212,7 +244,7 @@ func run(ctx context.Context) error {
 }
 ```
 
-`Devices`, `Device` and `Users` provide concise typed helpers. `c.API` exposes the complete `*api.ClientWithResponses`, with methods such as `ListDeviceRoutesWithResponse`. Generated methods return both successful and unsuccessful HTTP responses; callers must check `StatusCode()` before consuming success fields. `client.APIError` exposes `StatusCode`, `RequestID` and `RetryAfter` for facade/generic calls without including potentially sensitive response bodies in errors. Supply `Options.HTTPClient` to use a custom transport, tracing or test fixtures. Context cancellation is honoured; facade clients have a default 30-second timeout, reject redirects and restrict credentials to the configured origin. Responses through the facade transport are limited to 16 MiB.
+`Devices`, `Device` and `Users` provide concise typed helpers. `c.API` exposes the complete `*api.ClientWithResponses`, with methods such as `ListDeviceRoutesWithResponse`. Generated methods return both successful and unsuccessful HTTP responses; callers must check `StatusCode()` before consuming success fields. `client.APIError` exposes `StatusCode`, `RequestID` and `RetryAfter` for facade/generic calls without including potentially sensitive response bodies in errors. The CLI handles OS credential lookup; the Go SDK itself takes an explicit `Options.Token`. Supply `Options.HTTPClient` to use a custom transport, tracing or test fixtures. Context cancellation is honoured; facade clients have a default 30-second timeout, reject redirects and restrict credentials to the configured origin. Responses through the facade transport are limited to 16 MiB.
 
 ## Plugins
 
@@ -239,7 +271,7 @@ Implement `cli.Extension`:
 func (MyExtension) Command(runtime *cli.Runtime) (*cobra.Command, error)
 ```
 
-Register it via `cli.Options{Extensions: []cli.Extension{MyExtension{}}}`. The runtime offers `Client()`, `Print(...)`, decoded configuration and an isolated Viper instance after persistent pre-run configuration loading. Commands should use `cmd.Context()`, `cmd.OutOrStdout()` and `cobra` argument validation. Preserve the root's persistent pre-run hook when adding commands. Conflicting root commands are rejected. See the complete buildable example in `examples/inprocess`.
+Register it via `cli.Options{Extensions: []cli.Extension{MyExtension{}}}`. The runtime offers `Client()`, `Print(...)`, a replaceable credential store, decoded configuration and an isolated Viper instance after persistent pre-run configuration loading. Commands should use `cmd.Context()`, `cmd.OutOrStdout()` and `cobra` argument validation. Preserve the root's persistent pre-run hook when adding commands. Conflicting root commands are rejected. See the complete buildable example in `examples/inprocess`.
 
 ```sh
 go run ./examples/inprocess inventory -o wide
@@ -286,7 +318,9 @@ Create and push a version tag only when you intend to publish a release. The wor
 | Symptom | What to check |
 | --- | --- |
 | Homebrew cannot find `tailctl` | Confirm the repository is public, the stable release completed, and `Casks/tailctl.rb` exists on `main`; run `brew update`. |
-| `API token required` | Set `TAILCTL_TOKEN` in the same process/shell, or configure `token` in your YAML file. Use an API access token or OAuth access token, rather than a device enrolment auth key. |
+| `API token required` | Run `tailctl login`, or supply `TAILCTL_TOKEN` for automation. Use an API access token or OAuth access token, rather than a device enrolment auth key. |
+| OS credential store unavailable | Unlock/enable the OS keyring; Linux needs a session D-Bus and Secret Service provider. Headless sessions can use an environment token. No plaintext fallback is used. |
+| API calls still authenticate after logout | Remove any `TAILCTL_TOKEN` or YAML `token` override; logout deletes only the saved OS credential. |
 | HTTP 401 | Token validity and expiry. |
 | HTTP 403 | Token permissions/OAuth scopes and access to the selected tailnet. |
 | HTTP 404 | Tailnet name and resource ID. `--tailnet -` uses the token's tailnet where supported. |
@@ -306,6 +340,7 @@ Create and push a version tag only when you intend to publish a release. The wor
 | `pkg/api/` | Complete generated client, models and operation catalogue |
 | `pkg/client/` | Authentication, typed helpers and operation invocation |
 | `pkg/config/` | Isolated Viper instances and home-directory defaults |
+| `pkg/credentials/` | Server-scoped OS credential store interface and adapter |
 | `pkg/output/` | Stable table columns, wide, JSON and YAML output |
 | `pkg/plugin/` | Executable discovery, prefix resolution and subprocess protocol |
 | `pkg/cli/` | Cobra command tree and in-process extension contract |

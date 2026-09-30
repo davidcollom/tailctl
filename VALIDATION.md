@@ -25,3 +25,12 @@ Same-repository public-release packaging validated locally on 2026-09-30:
 - Updated GitHub workflow YAML parsed successfully.
 
 A live `brew install` has not yet been exercised. The release workflow includes macOS/Linux install smoke checks after each public stable release. No version tag, public release or repository visibility change was made while adding this support.
+
+## Login and logout
+
+- Race-enabled tests and `go vet` passed with Go 1.25.1.
+- Tests cover secure-store round trips through a mocked native provider, server scoping, environment/YAML precedence, lazy lookup, invalid token rejection, idempotent logout, store failures, secret redaction and absence of plaintext configuration writes.
+- A pseudo-terminal check confirmed that interactive login disables echo and restores the terminal on Ctrl-C without saving a token.
+- A new GoReleaser snapshot built Linux, macOS and Windows binaries on amd64 and arm64, then generated the Homebrew cask. GoReleaser configuration validation passed.
+- Native OS keychain APIs were mocked for automated tests; live macOS/Windows keychain round trips were not performed in this Linux environment.
+- Login stores API tokens; it does not perform OAuth browser login or token refresh.
