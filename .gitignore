@@ -1,0 +1,5 @@
+/bin/
+/dist/
+/tailctl-hello
+*.test
+coverage.out

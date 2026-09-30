@@ -1,0 +1,9 @@
+# ~/.config/tailctl/config.yaml (chmod 600 if storing a token)
+tailnet: '-'
+server: https://api.tailscale.com/api/v2
+output: table
+timeout: 30s
+# Prefer TAILCTL_TOKEN, supplied by your shell or secret manager.
+# token: tskey-api-...
+# plugin_dirs:
+#   - /absolute/path/to/your/plugins
