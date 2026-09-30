@@ -25,3 +25,28 @@ checksum:
   name_template: checksums.txt
 changelog:
   sort: asc
+
+# The project repository doubles as its tap. No second repository or PAT needed.
+homebrew_casks:
+  - name: tailctl
+    repository:
+      owner: davidcollom
+      name: tailctl
+      branch: main
+    directory: Casks
+    homepage: https://github.com/davidcollom/tailctl
+    description: Extensible Tailscale API CLI with readable output and plugins
+    binaries: [tailctl]
+    skip_upload: auto
+    commit_msg_template: 'chore(homebrew): update tailctl to {{ .Tag }}'
+    generate_completions_from_executable:
+      executable: tailctl
+      shell_parameter_format: cobra
+      shells: [bash, zsh, fish]
+    # Initial binaries are unsigned. Limit quarantine removal to this binary.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "#{staged_path}/tailctl"], must_succeed: false
+          end

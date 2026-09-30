@@ -4,6 +4,10 @@ on:
     tags: ['v*']
 permissions:
   contents: write
+# Serialize releases because each stable release updates Casks/tailctl.rb on main.
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -21,7 +25,32 @@ jobs:
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: '~> v2'
+          version: v2.18.2
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  homebrew-smoke:
+    needs: release
+    # Public downloads are the intended distribution model.
+    if: ${{ !github.event.repository.private && !contains(github.ref_name, '-') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Install and exercise the published cask
+        shell: bash
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Homebrew is preinstalled on these GitHub-hosted runners.
+          if ! command -v brew >/dev/null 2>&1; then
+            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          fi
+          brew update
+          brew tap davidcollom/tailctl https://github.com/davidcollom/tailctl.git
+          brew install --cask davidcollom/tailctl/tailctl
+          test "$(tailctl --version)" = "tailctl version ${GITHUB_REF_NAME#v}"
+          tailctl api list -o json

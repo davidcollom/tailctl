@@ -9,6 +9,7 @@ An extensible Tailscale API CLI and Go SDK, built with Cobra and Viper.
 - Common resource commands with kubectl-style tables, wide, JSON and YAML output.
 - Go command extensions and cross-platform executable plugins.
 - Home-directory configuration, environment overrides and explicit mutation guards.
+- Homebrew installation on macOS and Linux from the same repository.
 - Reproducible `go generate`, GitHub Actions and GoReleaser v2 releases.
 
 ## Contents
@@ -28,7 +29,30 @@ An extensible Tailscale API CLI and Go SDK, built with Cobra and Viper.
 
 ## Installation and quick start
 
-Requires Go 1.25.1 or newer. Generated code and `go.sum` are committed, so building does not require regenerating the API. Clone the repository with your usual GitHub credentials (the repository is currently private):
+### Homebrew (macOS and Linux)
+
+After the repository is public and its first stable release has completed:
+
+```sh
+# An explicit URL allows the project repository to double as the tap.
+brew tap davidcollom/tailctl https://github.com/davidcollom/tailctl.git
+brew install --cask davidcollom/tailctl/tailctl
+
+tailctl --version
+tailctl --help
+
+# Update later:
+brew update
+brew upgrade --cask davidcollom/tailctl/tailctl
+```
+
+The cask selects the macOS/Linux amd64 or arm64 release archive and verifies its SHA-256 checksum. It installs the binary and Bash, Zsh and Fish completion scripts; Go is not required. Use current Homebrew with Linux cask and completion-generation support. The commands above become available only after GoReleaser publishes `Casks/tailctl.rb` on `main`; there is no placeholder package pointing at a nonexistent release. Public source and public release assets are the intended distribution model.
+
+Initial release binaries are not Apple-signed or notarised. The macOS cask removes the quarantine attribute from the staged `tailctl` binary only, so the executable can run and generate completions. This requires trusting the release directly; Apple signing/notarisation can be added later. The hook is skipped on Linux.
+
+### Build from source
+
+Building from source requires Go 1.25.1 or newer. Generated code and `go.sum` are committed, so building does not require regenerating the API. Clone the repository:
 
 ```sh
 git clone https://github.com/davidcollom/tailctl.git
@@ -241,6 +265,10 @@ Upstream describes its OpenAPI schema as unstable. Schema refreshes are explicit
 
 ## CI and releases
 
+The code, release configuration and Homebrew tap live in **one repository**. A stable version tag publishes release archives and then updates `Casks/tailctl.rb` on `main` automatically. The tap uses the same repository's `GITHUB_TOKEN` with `contents: write`; no extra secret or separate tap repository is required. The release workflow serialises runs to avoid simultaneous cask updates. Prereleases produce release assets but do not update the stable Homebrew cask (`skip_upload: auto`). Commits made by `GITHUB_TOKEN` do not recursively trigger workflows. After a public stable release, the release workflow installs the published cask on macOS and Linux and checks the CLI version and API catalogue.
+
+For the first public release, make the repository public, confirm CI passes, then create the version tag. Repository visibility is managed separately and is not changed by the release workflow. No stable cask has been published until that release completes.
+
 GitHub Actions runs race-enabled tests, vet and build on Linux, macOS and Windows; a separate job regenerates and rejects drift. GoReleaser configuration is checked in CI. Pushing a `v*` tag runs tests and publishes a GitHub release with Linux/macOS/Windows amd64 and arm64 binaries, tar.gz/zip archives and checksums.
 
 ```sh
@@ -257,6 +285,7 @@ Create and push a version tag only when you intend to publish a release. The wor
 
 | Symptom | What to check |
 | --- | --- |
+| Homebrew cannot find `tailctl` | Confirm the repository is public, the stable release completed, and `Casks/tailctl.rb` exists on `main`; run `brew update`. |
 | `API token required` | Set `TAILCTL_TOKEN` in the same process/shell, or configure `token` in your YAML file. Use an API access token or OAuth access token, rather than a device enrolment auth key. |
 | HTTP 401 | Token validity and expiry. |
 | HTTP 403 | Token permissions/OAuth scopes and access to the selected tailnet. |
@@ -272,6 +301,7 @@ Create and push a version tag only when you intend to publish a release. The wor
 
 | Path | Purpose |
 | --- | --- |
+| `Casks/` | Release-generated Homebrew package in this same repository |
 | `api/` | Original schema, provenance and generator configuration |
 | `pkg/api/` | Complete generated client, models and operation catalogue |
 | `pkg/client/` | Authentication, typed helpers and operation invocation |
@@ -285,7 +315,7 @@ Create and push a version tag only when you intend to publish a release. The wor
 
 ## Contributing
 
-Keep changes focused, add tests for behaviour that affects API requests or plugin dispatch, and run `go test -race ./...`, `go vet ./...` and `go generate ./...` before opening a pull request. Run `gofmt` on changed Go files. Edit generated code through the upstream schema/generator configuration rather than patching `*.gen.go` manually. Schema refreshes should include updated provenance and a review of generated diffs.
+Keep changes focused, add tests for behaviour that affects API requests or plugin dispatch, and run `go test -race ./...`, `go vet ./...` and `go generate ./...` before opening a pull request. Run `gofmt` on changed Go files. Edit generated code through the upstream schema/generator configuration rather than patching `*.gen.go` manually. Schema refreshes should include updated provenance and a review of generated diffs. Homebrew package changes should be made in `.goreleaser.yaml`; `Casks/tailctl.rb` is generated on release. Moving the tap later only requires changing `homebrew_casks.repository` and publishing a tap migration. A separate repository will require a credential scoped to that tap.
 
 Tests use local HTTP fixtures and do not need Tailscale credentials. See [VALIDATION.md](VALIDATION.md) for the initial local validation results, and [Actions](https://github.com/davidcollom/tailctl/actions) for repository CI.
 
