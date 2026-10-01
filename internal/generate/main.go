@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"go/format"
 	"os"
@@ -68,5 +69,16 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile("operations.gen.go", formatted, 0644)
+	if err := os.WriteFile("operations.gen.go", formatted, 0644); err != nil {
+		return err
+	}
+	var document map[string]any
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		return err
+	}
+	schema, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile("schema.gen.json", append(schema, '\n'), 0644)
 }

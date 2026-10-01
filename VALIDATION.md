@@ -53,3 +53,18 @@ A live `brew install` has not yet been exercised. The release workflow includes 
 - Actionlint v1.7.12, YAML parsing and GoReleaser v2.18.2 configuration validation pass.
 - Go race tests pass with the updated Go 1.26 toolchain/dependencies. Generation and snapshot validation are recorded with the final change below.
 - Manual-run signatures use the dispatch branch identity; direct tag-push signatures use the tag identity. No personal access token is needed to create the tag and publish within the same workflow run.
+
+## Complete resource command coverage
+
+Validated locally on 2026-10-01 with Go 1.26.0.
+
+- The live upstream schema still defines 93 operations across 60 paths, matching the pinned operation set. Every operation has a named command across 16 resource families.
+- One HTTP fixture test per operation verifies its method, escaped route, authentication, required queries and request body. All non-GET actions are also checked for `--yes` before credential lookup.
+- Additional tests exercise explicit false/empty values, repeated arrays, clearing arrays, composed service bodies, nested JSON fields, schema validation, query bounds/enums, raw HuJSON, Accept/If-Match, pagination preservation and secret redaction.
+- Response files are reserved before requests, refuse overwrite, have Unix mode 0600, retain exact bytes and are removed on API failure. Invalid inputs/output formats do not reach credential lookup or HTTP.
+- `api describe` includes transitive referenced schemas, and help/completion/catalogue/description commands work without credentials.
+- `go test -race ./...`, `go vet ./...`, release-policy Node tests, CLI build/help checks and `git diff --check` passed.
+- `go generate ./...` regenerates SDK/catalogue, embedded schema JSON and the complete command reference deterministically.
+- GoReleaser 2.18.2 configuration validation and a publishing-disabled snapshot passed for all six Linux/macOS/Windows amd64/arm64 targets, producing archives, checksums and the Homebrew cask.
+
+These are local HTTP integration fixtures, not authenticated tests against a live tailnet. Permissions, subscription-specific features and server business rules remain subject to Tailscale's responses. Lists make a single request; cursor pagination is explicit.

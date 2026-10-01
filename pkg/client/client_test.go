@@ -136,3 +136,37 @@ func TestCancellation(t *testing.T) {
 		t.Fatalf("cancellation: %v", err)
 	}
 }
+
+func TestCallRawPreservesPolicyAndHeaders(t *testing.T) {
+	policy := "// comment\n{\"acls\": []}\n"
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Header.Get("Accept") != "application/hujson" || r.Header.Get("Authorization") != "Bearer secret" {
+			t.Error("request headers")
+		}
+		w.Header().Set("Content-Type", "application/hujson")
+		w.Header().Set("ETag", "revision")
+		fmt.Fprint(w, policy)
+	}))
+	defer server.Close()
+	c, err := New(Options{Token: "secret", Server: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := c.CallRaw(context.Background(), "getPolicyFile", nil, nil, nil, "", http.Header{"Accept": {"application/hujson"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(response.Data) != policy || response.ContentType != "application/hujson" || response.StatusCode != 200 || response.Headers.Get("ETag") != "revision" {
+		t.Fatalf("response: %#v", response)
+	}
+	for _, headers := range []http.Header{{"Authorization": {"other"}}, {"Accept": {"bad\r\nheader"}}, {"Host": {"example.com"}}} {
+		if _, err := c.CallRaw(context.Background(), "getPolicyFile", nil, nil, nil, "", headers); err == nil {
+			t.Fatal("unsupported header accepted")
+		}
+	}
+	if calls != 1 {
+		t.Fatal("invalid header reached server")
+	}
+}

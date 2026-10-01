@@ -6,7 +6,7 @@
 An extensible Tailscale API CLI and Go SDK, built with Cobra and Viper.
 
 - Complete typed client generated from the supplied upstream OpenAPI 3.1 schema.
-- Common resource commands with kubectl-style tables, wide, JSON and YAML output.
+- Named resource commands for all 93 schema operations, with kubectl-style tables, wide, JSON and YAML output.
 - Go command extensions and cross-platform executable plugins.
 - Home-directory configuration, secure OS credential storage and explicit mutation guards.
 - Homebrew installation on macOS and Linux from the same repository.
@@ -180,29 +180,95 @@ tailctl completion fish > ~/.config/fish/completions/tailctl.fish
 tailctl completion powershell | Out-String | Invoke-Expression
 ```
 
-Use `tailctl help`, `tailctl get --help` and `tailctl api call --help` for command-specific usage. External plugins own their flags and help output.
+Use `tailctl help`, `tailctl devices --help`, `tailctl devices routes set --help` and `tailctl api call --help` for command-specific usage. External plugins own their flags and help output.
 
 ## Every API operation
 
-The pinned schema defines 93 operations across 60 paths. Both the typed client and operation catalogue are generated from it.
+The pinned schema defines **93 operations across 60 paths**, and every operation now has a named resource command. The typed SDK, embedded validation schema, operation catalogue and [complete command reference](docs/commands.md) are generated alongside the CLI documentation.
+
+| Resource family | Operations | Includes |
+| --- | ---: | --- |
+| `devices` | 17 | Authorisation, names, tags, keys, IPs, routes, posture attributes and device invitations |
+| `users` | 7 | Listing, roles, approval, suspension, restoration and deletion |
+| `user-invites`, `device-invites` | 9 | Creation, inspection, resend, acceptance and deletion |
+| `keys` | 5 | Auth/client/federated key management |
+| `dns` | 11 | Complete configuration, nameservers, preferences, search paths and split DNS |
+| `policy` | 4 | Read, replace, preview and validate/test policies |
+| `logs` | 8 | Audit/network logs, streaming configuration/status and AWS external IDs |
+| `posture` | 5 | Posture integration management |
+| `contacts` | 3 | Contact details and verification emails |
+| `webhooks` | 7 | CRUD, testing and secret rotation |
+| `settings`, `tailnets` | 3 | Tailnet settings and deletion |
+| `services` | 7 | Service definitions, hosts and per-device approval |
+| `oauth-apps` | 5 | OAuth app management |
+| `organisations` | 2 | List/create organisation tailnets (`organizations` is an alias) |
+
+### Resource commands
+
+Path IDs are positional; tailnet-scoped operations use the configured `--tailnet`. Simple body fields and query parameters become typed flags. Boolean flags send a field only when explicitly supplied, so `--authorized=false` and `--magic-dns=false` work correctly.
 
 ```sh
-# Discover operation IDs and path placeholders, without a token.
+tailctl devices list -o wide
+tailctl devices list --fields all --filter hostname=worker-01
+tailctl devices routes get n123
+tailctl users list --role admin --type member
+tailctl webhooks list
+tailctl oauth-apps list
+
+# Every non-GET/HEAD action requires --yes, including policy preview/validation.
+tailctl devices authorise n123 --authorized --yes
+tailctl devices rename n123 --name worker-02 --yes
+tailctl devices routes set n123 --routes 10.0.0.0/8 --routes 192.168.0.0/16 --yes
+tailctl devices tags set n123 --tags-json '[]' --yes
+tailctl users role set u123 --role member --yes
+tailctl dns preferences set --magic-dns=false --yes
+tailctl services set svc:web --ports tcp:443 --display-name Web --yes
+tailctl services approval set svc:web n123 --approved --yes
+
+# Both timestamps are required by these log endpoints.
+tailctl logs audit list --start 2026-09-01T00:00:00Z --end 2026-09-02T00:00:00Z
+tailctl logs network list --start 2026-09-01T00:00:00Z --end 2026-09-02T00:00:00Z -o json
+```
+
+Repeat array flags for each value; use `--FIELD-json '[]'` to send an empty array. Object/union fields use JSON flags, for example `devices attributes set n123 custom:healthy --value-json true --yes`. Complex bodies, top-level arrays, policy documents and secret fields use `--file PATH` or `--file -` for stdin. Body flags and `--file` cannot be combined. Resource commands validate JSON bodies and schema parameter types, enums and bounds before credential lookup or HTTP requests. The server still checks permissions and business rules; HuJSON is passed through for server validation.
+
+```sh
+# Inspect required fields, enums, body shapes and referenced schemas locally.
+tailctl api describe createWebhook
+tailctl api describe createKey -o json
+tailctl api describe createOrganizationTailnet -o yaml
+
+# Store a one-time key response without printing it or overwriting an existing file.
+# key-request.json contains the complete request described by the schema above.
+tailctl keys create --file key-request.json --response-file key-response.json --yes
+
+# Preserve comments in HuJSON; optimistic concurrency is supported via If-Match.
+tailctl policy get --accept application/hujson --raw > policy.hujson
+tailctl policy validate --file policy.hujson --content-type application/hujson --yes -o json
+tailctl policy set --file policy.hujson --content-type application/hujson \
+  --if-match 'known-policy-etag' --yes
+```
+
+Tables unwrap list envelopes, use resource-specific columns and redact credential fields. `-o wide` adds useful details; `--sort-by FIELD` and `--no-headers` apply to tables. JSON/YAML retain the complete response, including secrets and pagination metadata. Lists perform one request: for endpoints with cursor pagination, read the returned cursor with `-o json` and pass it to the next request using `--cursor`. There are no automatic retries or write replays.
+
+`--raw` writes exact response bytes, including HuJSON. `--response-file PATH` reserves a new file before making the request and saves the exact response there without echoing it. Files use mode `0600` on Unix and the user's filesystem ACLs on Windows; existing files are never overwritten. Use these modes for responses containing one-time secrets. Empty successful responses show the operation and HTTP status.
+
+### Generic operation access
+
+The existing `get` helpers and generic operation interface remain available:
+
+```sh
+# Shows every operation ID, HTTP route and corresponding resource command.
 tailctl api list
 
-# Server-side filters, including repeated query values.
 tailctl api call listTailnetDevices \
   --query tags=tag:prod --query tags=tag:router -o json
-
-# Path parameters are escaped, and tailnet defaults to configured tailnet.
 tailctl api call listDeviceRoutes --param deviceId=n123 -o yaml
-
-# Mutations require --yes, even when invoked through the generic API command.
 printf '%s' '{"authorized":true}' | tailctl api call authorizeDevice \
   --param deviceId=n123 --file - --yes -o json
 ```
 
-`api call` accepts repeatable `--param KEY=VALUE`, repeatable `--query KEY=VALUE`, `--file PATH` or stdin (`--file -`), and `--content-type`. It sends `Accept: application/json` and renders successful JSON responses. Empty successful bodies render as `null`. Use the generated client directly for HuJSON/binary responses, endpoint-specific headers (including ETag / If-Match), or other advanced options. `api call` does not validate request bodies against the schema; typed generated request models are available to Go callers. There are no automatic retries: HTTP 429 is surfaced to the caller without replaying writes.
+`api call` is the lower-level JSON interface: it accepts repeatable `--param KEY=VALUE`, repeatable `--query KEY=VALUE`, `--file`, and `--content-type`, without schema body validation. It requests JSON; empty responses render as `null`. Prefer resource commands for validated requests, readable tables, HuJSON, endpoint-specific headers and response files. Go callers can use `c.CallRaw` for exact bytes, status, content type and response headers (including policy ETags), or `c.API` for the complete typed interface.
 
 ## Go SDK
 
@@ -291,7 +357,7 @@ go test -race ./...
 go vet ./...
 ```
 
-The generator is pinned as a Go tool in `go.mod` (`oapi-codegen v2.8.0`). The source endpoint returns OpenAPI **3.1** YAML, which this generator supports directly. `api/codegen.yaml` sets `response-type-suffix: HTTPResponse` to avoid upstream schema model names colliding with generated response wrapper names. Both generator and runtime versions are pinned; generated files are committed. No manual patches or lossy conversion of the schema are required. The small catalogue generator skips path-level parameter metadata and rejects duplicate operation IDs.
+The generator is pinned as a Go tool in `go.mod` (`oapi-codegen v2.8.0`). The source endpoint returns OpenAPI **3.1** YAML, which this generator supports directly. `api/codegen.yaml` sets `response-type-suffix: HTTPResponse` to avoid upstream schema model names colliding with generated response wrapper names. Both generator and runtime versions are pinned; generated files are committed. No manual patches or lossy conversion of the schema are required. The catalogue generator rejects duplicate operation IDs and embeds a deterministic JSON copy of the original schema for local validation. Resource commands resolve operation and path-level parameters plus component references and object composition. `go generate ./...` also rebuilds `docs/commands.md` from the real Cobra tree. Coverage tests exercise every schema operation, and newly added upstream operations require an explicit command mapping in `pkg/cli/commands.go`.
 
 Upstream describes its OpenAPI schema as unstable. Schema refreshes are explicit so a routine build cannot silently change API coverage. Review the schema diff and regenerate before upgrading. The chosen module path is `github.com/davidcollom/tailctl`; change it and source imports if you publish under another repository name.
 
@@ -372,7 +438,7 @@ Updates open pull requests and run normal CI; they are not automatically merged.
 | Missing explicit config file | Check `--config` or `TAILCTL_CONFIG`; only the missing default file is ignored. |
 | Plugin not found | Run `tailctl plugin list`; check its name, executable permission and `plugin_dirs`/`PATH`. On Windows use `.exe`. |
 | Plugin flags rejected by the root command | Put the external plugin command first; following flags are passed to the plugin. |
-| Non-JSON response | Use the generated Go client for HuJSON or binary bodies. Generic CLI calls request JSON. |
+| Non-JSON response | Use a resource command with `--raw` or `--response-file`, or the generated Go client. Generic `api call` requests JSON. |
 | Generated code drift in CI | Run `go generate ./...` and commit the resulting generated files. |
 
 ## Layout
@@ -381,7 +447,8 @@ Updates open pull requests and run normal CI; they are not automatically merged.
 | --- | --- |
 | `Casks/` | Release-generated Homebrew package in this same repository |
 | `api/` | Original schema, provenance and generator configuration |
-| `pkg/api/` | Complete generated client, models and operation catalogue |
+| `pkg/api/` | Complete generated client, models, catalogue and embedded validation schema |
+| `docs/commands.md` | Generated reference for all 93 resource commands |
 | `pkg/client/` | Authentication, typed helpers and operation invocation |
 | `pkg/config/` | Isolated Viper instances and home-directory defaults |
 | `pkg/credentials/` | Server-scoped OS credential store interface and adapter |

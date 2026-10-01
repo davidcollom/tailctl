@@ -101,6 +101,9 @@ func NewRoot(o Options) (*cobra.Command, error) {
 		return nil
 	}
 	root.AddCommand(getCommand(r), apiCommand(r), configCommand(r, &path), pluginCommand(r), loginCommand(r), logoutCommand(r))
+	if err := addResourceCommands(root, r); err != nil {
+		return nil, err
+	}
 	for _, ext := range o.Extensions {
 		cmd, err := ext.Command(r)
 		if err != nil {
@@ -246,9 +249,14 @@ func getCommand(r *Runtime) *cobra.Command {
 }
 func apiCommand(r *Runtime) *cobra.Command {
 	command := &cobra.Command{Use: "api", Short: "Discover and call all schema-defined API operations"}
+	command.AddCommand(describeCommand(r))
 	command.AddCommand(&cobra.Command{Use: "list", Short: "List generated operation IDs", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		operations := api.Operations()
 		rows := []map[string]string{}
+		commands := map[string]string{}
+		for _, binding := range ResourceBindings() {
+			commands[binding.Operation] = "tailctl " + binding.Command
+		}
 		keys := []string{}
 		for k := range operations {
 			keys = append(keys, k)
@@ -256,9 +264,9 @@ func apiCommand(r *Runtime) *cobra.Command {
 		sort.Strings(keys)
 		for _, k := range keys {
 			op := operations[k]
-			rows = append(rows, map[string]string{"id": op.ID, "method": op.Method, "path": op.Path, "summary": op.Summary})
+			rows = append(rows, map[string]string{"id": op.ID, "method": op.Method, "path": op.Path, "summary": op.Summary, "command": commands[k]})
 		}
-		return r.Print(cmd, rows, []output.Column{{Header: "OPERATION", Field: "id"}, {Header: "METHOD", Field: "method"}, {Header: "PATH", Field: "path"}})
+		return r.Print(cmd, rows, []output.Column{{Header: "OPERATION", Field: "id"}, {Header: "METHOD", Field: "method"}, {Header: "PATH", Field: "path"}, {Header: "COMMAND", Field: "command"}})
 	}})
 	var params, queries []string
 	var file, contentType string

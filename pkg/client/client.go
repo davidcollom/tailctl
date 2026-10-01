@@ -193,9 +193,18 @@ func (c *Client) Users(ctx context.Context) ([]api.User, error) {
 
 var pathParameter = regexp.MustCompile(`\{([^}]+)\}`)
 
-// Call invokes a schema-catalogued operation. Parameters are URL-escaped, never interpolated raw.
-// Mutations are allowed here; the CLI applies its own --yes guard.
-func (c *Client) Call(ctx context.Context, id string, params map[string]string, query url.Values, body io.Reader, contentType string) (json.RawMessage, error) {
+// Response preserves raw bytes and metadata, including HuJSON policy responses.
+type Response struct {
+	Data        []byte
+	ContentType string
+	StatusCode  int
+	Headers     http.Header
+}
+
+// CallRaw invokes a schema-catalogued operation without decoding the response.
+// Parameters are URL-escaped. Only schema-supported Accept/If-Match headers can
+// be overridden; authentication is applied separately by the transport.
+func (c *Client) CallRaw(ctx context.Context, id string, params map[string]string, query url.Values, body io.Reader, contentType string, headers http.Header) (*Response, error) {
 	op, ok := api.Operations()[id]
 	if !ok {
 		return nil, fmt.Errorf("unknown API operation %q", id)
@@ -233,6 +242,18 @@ func (c *Client) Call(ctx context.Context, id string, params map[string]string, 
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
+	for key, values := range headers {
+		key = http.CanonicalHeaderKey(key)
+		if key != "Accept" && key != "If-Match" {
+			return nil, fmt.Errorf("unsupported API header %q", key)
+		}
+		for _, value := range values {
+			if strings.ContainsAny(value, "\r\n") {
+				return nil, errors.New("invalid API header")
+			}
+		}
+		req.Header[key] = append([]string(nil), values...)
+	}
 	if body != nil {
 		if contentType == "" {
 			contentType = "application/json"
@@ -251,11 +272,20 @@ func (c *Client) Call(ctx context.Context, id string, params map[string]string, 
 	if err != nil {
 		return nil, err
 	}
-	if len(data) == 0 {
+	return &Response{Data: data, ContentType: resp.Header.Get("Content-Type"), StatusCode: resp.StatusCode, Headers: resp.Header.Clone()}, nil
+}
+
+// Call retains the JSON-only operation interface for SDK callers and api call.
+func (c *Client) Call(ctx context.Context, id string, params map[string]string, query url.Values, body io.Reader, contentType string) (json.RawMessage, error) {
+	response, err := c.CallRaw(ctx, id, params, query, body, contentType, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(response.Data) == 0 {
 		return json.RawMessage("null"), nil
 	}
-	if !json.Valid(data) {
-		return nil, errors.New("API returned non-JSON content; use the generated API client for HuJSON or binary responses")
+	if !json.Valid(response.Data) {
+		return nil, errors.New("API returned non-JSON content; use CallRaw or a resource command with --raw for HuJSON responses")
 	}
-	return json.RawMessage(data), nil
+	return json.RawMessage(response.Data), nil
 }
