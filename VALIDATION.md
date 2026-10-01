@@ -44,3 +44,12 @@ A live `brew install` has not yet been exercised. The release workflow includes 
 - `goreleaser release --snapshot --clean --skip=sign` builds all six platform/architecture archives; `sha256sum --check checksums.txt` verifies all six.
 - GitHub OIDC signing cannot be exercised in a local snapshot. The next tagged release must publish `checksums.txt.sigstore.json` and pass the exact workflow/tag identity verification step. No signed release was created during this change.
 - Dependabot security update groups apply when repository Dependabot alerts/security updates are enabled. Toolchain/GoReleaser version changes and upstream API schema refreshes remain explicit maintainer tasks, as documented in README.md.
+
+## Manual semantic releases and owner authorisation
+
+- Synced local Go manifests with the already-merged Dependabot update on remote main (`36a5e6b`); its GitHub CI completed successfully.
+- Seven Node test groups exercise effective CODEOWNERS precedence, case-insensitive actor matching, rerun actor rejection, unsupported ownership, numeric semantic increments, restricted event refs, exact-commit CI gating and immutable rerun tag selection.
+- The workflow resolves named release owners from default-branch CODEOWNERS and requires current repository write access. Team/email owners are intentionally rejected until a membership integration is configured.
+- Actionlint v1.7.12, YAML parsing and GoReleaser v2.18.2 configuration validation pass.
+- Go race tests pass with the updated Go 1.26 toolchain/dependencies. Generation and snapshot validation are recorded with the final change below.
+- Manual-run signatures use the dispatch branch identity; direct tag-push signatures use the tag identity. No personal access token is needed to create the tag and publish within the same workflow run.

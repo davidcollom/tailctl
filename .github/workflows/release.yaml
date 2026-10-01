@@ -2,6 +2,14 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Semantic version increment (first minor release is v0.1.0)
+        type: choice
+        required: true
+        default: patch
+        options: [patch, minor, major]
 permissions:
   contents: read
 # Serialize releases because each stable release updates Casks/tailctl.rb on main.
@@ -9,7 +17,29 @@ concurrency:
   group: release
   cancel-in-progress: false
 jobs:
+  authorise:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+      identity: ${{ steps.plan.outputs.identity }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Authorise owners, require green CI and calculate version
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_BUMP: ${{ inputs.bump }}
+        run: node .github/scripts/release.mjs
   release:
+    needs: authorise
     permissions:
       contents: write
       id-token: write
@@ -22,9 +52,35 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - run: node --test .github/scripts/release.test.mjs
+      - run: go vet ./...
       - run: go generate ./...
       - run: git diff --exit-code
       - run: go test -race ./...
+      - name: Confirm default branch has not moved
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_PHASE: check-head
+        run: node .github/scripts/release.mjs
+      - name: Create next release tag (no overwrites)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.authorise.outputs.tag }}
+          RELEASE_SHA: ${{ needs.authorise.outputs.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            # A failed release job can resume its own tag, but never retarget it.
+            test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$RELEASE_SHA"
+            test "$(git for-each-ref --format='%(contents:subject)' "refs/tags/$RELEASE_TAG")" = "Release $RELEASE_TAG (run $GITHUB_RUN_ID)"
+          else
+            git tag -a "$RELEASE_TAG" "$RELEASE_SHA" -m "Release $RELEASE_TAG (run $GITHUB_RUN_ID)"
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
       - name: Install Cosign (version managed by its installer action)
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
@@ -34,11 +90,12 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ needs.authorise.outputs.tag }}
 
       - name: Verify release signature and archive checksums
         shell: bash
         env:
-          RELEASE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yaml@${{ github.ref }}
+          RELEASE_IDENTITY: ${{ needs.authorise.outputs.identity }}
         run: |
           cosign verify-blob \
             --certificate-identity "$RELEASE_IDENTITY" \
@@ -47,9 +104,9 @@ jobs:
           (cd dist && sha256sum --check checksums.txt)
 
   homebrew-smoke:
-    needs: release
+    needs: [authorise, release]
     # Public downloads are the intended distribution model.
-    if: ${{ !github.event.repository.private && !contains(github.ref_name, '-') }}
+    if: ${{ !github.event.repository.private }}
     strategy:
       fail-fast: false
       matrix:
@@ -59,6 +116,7 @@ jobs:
       - name: Install and exercise the published cask
         shell: bash
         env:
+          RELEASE_TAG: ${{ needs.authorise.outputs.tag }}
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Homebrew is preinstalled on these GitHub-hosted runners.
@@ -68,5 +126,5 @@ jobs:
           brew update
           brew tap davidcollom/tailctl https://github.com/davidcollom/tailctl.git
           brew install --cask davidcollom/tailctl/tailctl
-          test "$(tailctl --version)" = "tailctl version ${GITHUB_REF_NAME#v}"
+          test "$(tailctl --version)" = "tailctl version ${RELEASE_TAG#v}"
           tailctl api list -o json

@@ -1,0 +1,6 @@
+# Named release maintainers. Release authorisation resolves the effective owners
+# of .github/workflows/release.yaml using this file on the default branch.
+* @davidcollom
+/.github/CODEOWNERS @davidcollom
+/.github/workflows/release.yaml @davidcollom
+/.github/scripts/ @davidcollom

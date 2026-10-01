@@ -53,7 +53,7 @@ Initial release binaries are not Apple-signed or notarised. The macOS cask remov
 
 ### Build from source
 
-Building from source requires Go 1.25.1 or newer. Generated code and `go.sum` are committed, so building does not require regenerating the API. Clone the repository:
+Building from source requires Go 1.26.0 or newer. Generated code and `go.sum` are committed, so building does not require regenerating the API. Clone the repository:
 
 ```sh
 git clone https://github.com/davidcollom/tailctl.git
@@ -297,32 +297,49 @@ Upstream describes its OpenAPI schema as unstable. Schema refreshes are explicit
 
 ## CI and releases
 
-The code, release configuration and Homebrew tap live in **one repository**. A stable version tag publishes release archives and then updates `Casks/tailctl.rb` on `main` automatically. The tap uses the same repository's `GITHUB_TOKEN` with `contents: write`; no extra secret or separate tap repository is required. The release workflow serialises runs to avoid simultaneous cask updates. Prereleases produce release assets but do not update the stable Homebrew cask (`skip_upload: auto`). Commits made by `GITHUB_TOKEN` do not recursively trigger workflows. After a public stable release, the release workflow installs the published cask on macOS and Linux and checks the CLI version and API catalogue.
+The code, release configuration and Homebrew tap live in **one repository**. A stable version tag publishes release archives and then updates `Casks/tailctl.rb` on `main` automatically. The tap uses the same repository's `GITHUB_TOKEN` with `contents: write`; no extra secret or separate tap repository is required. The release workflow serialises runs to avoid simultaneous cask updates. This workflow publishes stable semantic versions only; prerelease tags are rejected by the release gate. Commits made by `GITHUB_TOKEN` do not recursively trigger workflows. After a public stable release, the release workflow installs the published cask on macOS and Linux and checks the CLI version and API catalogue.
 
-For the first public release, make the repository public, confirm CI passes, then create the version tag. Repository visibility is managed separately and is not changed by the release workflow. No stable cask has been published until that release completes.
+For the first public release, make the repository public, confirm CI passes, then use the manual Release workflow. Repository visibility is managed separately and is not changed by the release workflow. No stable cask has been published until that release completes.
 
-GitHub Actions runs race-enabled tests, vet and build on Linux, macOS and Windows; a separate job regenerates and rejects drift. GoReleaser configuration is checked in CI. Pushing a `v*` tag runs tests and publishes a GitHub release with Linux/macOS/Windows amd64 and arm64 binaries, tar.gz/zip archives and checksums.
+GitHub Actions runs race-enabled tests, vet and build on Linux, macOS and Windows; a separate job regenerates and rejects drift. GoReleaser configuration is checked in CI. An authorised stable tag push or manual release runs tests and publishes a GitHub release with Linux/macOS/Windows amd64 and arm64 binaries, tar.gz/zip archives and checksums.
 
 ```sh
 goreleaser check
 goreleaser release --snapshot --clean --skip=sign
-# Once this source is in your repository and CI passes:
+# Optional CLI alternative after CI succeeds (a named release CODEOWNER):
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
 Create and push a version tag only when you intend to publish a release. The workflow uses the repository's `GITHUB_TOKEN` with `contents: write`; it does not require a personal access token. Completed releases appear on the [Releases page](https://github.com/davidcollom/tailctl/releases). Snapshot output is excluded from source control. CI runs with read-only repository permissions. Only the release job grants `contents: write` for release assets and the Homebrew cask, and `id-token: write` for keyless signing.
 
+### Release from GitHub's web interface
+
+Open **Actions → Release → Run workflow**, select the default branch (`main`), choose **patch**, **minor** or **major**, then run it. For the initial release choose **minor** to create `v0.1.0`. No personal access token or manual tag creation is needed.
+
+| Selection | Starting at `v0.1.2` | No stable tags yet |
+| --- | --- | --- |
+| patch | `v0.1.3` | `v0.0.1` |
+| minor | `v0.2.0` | `v0.1.0` |
+| major | `v1.0.0` | `v1.0.0` |
+
+The highest stable `vMAJOR.MINOR.PATCH` tag is the version baseline; prereleases and other tags are ignored. Releases are serialised. Manual runs must use the latest default-branch commit, and the latest push-triggered CI run for that exact commit must have finished successfully. Wait for CI before dispatching. The release job repeats tests and generation checks, confirms the branch has not moved, creates an annotated tag without overwriting anything, then runs GoReleaser in the same workflow. This avoids GitHub's restriction that tag pushes made with `GITHUB_TOKEN` do not trigger another push workflow.
+
+The gate uses `.github/CODEOWNERS` from the default branch and the effective owners of `/.github/workflows/release.yaml`. Both `github.actor` and `github.triggering_actor` must be named owners with current repository write access, including reruns. Initially this is `@davidcollom`. Update the ownership entry to add maintainers. Missing/cleared ownership, unsupported patterns, teams and email-based owners fail closed; team membership requires a separate organisation-aware integration, which this personal repository does not need.
+
+A failed run can be rerun while its source remains the default-branch head. It resumes only its own annotated tag at the same commit. It never deletes or moves tags. If the default branch has advanced, inspect any existing tag/release before starting a fresh increment. Direct stable tag pushes remain supported for named release owners when the source commit passed default-branch CI.
+
+Protect `main`, the release workflow, the scripts and CODEOWNERS with required owner reviews, and restrict tag creation with repository rulesets when adding collaborators. Workflow checks govern this release process; they cannot prevent a repository administrator or someone permitted to change workflows from changing the policy. Repository visibility stays unchanged; Homebrew installation tests run once the repository is public.
+
 ### Verify release downloads
 
-Tagged releases sign `checksums.txt` with Cosign using GitHub Actions OIDC. No signing key, password or signing secret is stored in the repository. GoReleaser publishes `checksums.txt.sigstore.json`, which contains the signature, certificate and transparency-log evidence. The authenticated SHA-256 manifest covers every release archive. The release workflow also verifies the bundle and all local archive checksums before reporting success.
+Releases sign `checksums.txt` with Cosign using GitHub Actions OIDC. No signing key, password or signing secret is stored in the repository. GoReleaser publishes `checksums.txt.sigstore.json`, which contains the signature, certificate and transparency-log evidence. The authenticated SHA-256 manifest covers every release archive. The release workflow also verifies the bundle and all local archive checksums before reporting success.
 
-Install [Cosign 3](https://docs.sigstore.dev/cosign/system_config/installation/) and download `checksums.txt`, `checksums.txt.sigstore.json` and your archive from the **same release**. Set the exact release tag below:
+Install [Cosign 3](https://docs.sigstore.dev/cosign/system_config/installation/) and download `checksums.txt`, `checksums.txt.sigstore.json` and your archive from the **same release**. For a manual release, use the default-branch identity shown below (`main`). A release started by a direct tag push instead uses `.../release.yaml@refs/tags/<exact-tag>`. The run summary records the source commit and successful CI run.
 
 ```sh
-TAG=v0.1.0  # Replace with the release you downloaded.
 cosign verify-blob \
-  --certificate-identity "https://github.com/davidcollom/tailctl/.github/workflows/release.yaml@refs/tags/$TAG" \
+  --certificate-identity "https://github.com/davidcollom/tailctl/.github/workflows/release.yaml@refs/heads/main" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --bundle checksums.txt.sigstore.json checksums.txt
 
@@ -332,7 +349,7 @@ sha256sum --check --ignore-missing checksums.txt
 
 On macOS, check the downloaded archive with `shasum -a 256 <archive>` against its entry in the verified manifest. On Windows, use `Get-FileHash <archive> -Algorithm SHA256`. Confirm the exact archive filename and digest match before extracting or running it. Do not disable certificate identity, issuer or transparency-log verification.
 
-Homebrew checks archive SHA-256 values from the generated cask; it does not perform Cosign verification automatically. Cosign signing is separate from Apple Developer ID signing/notarisation and Windows Authenticode. Snapshot builds skip signing and are for local testing. Public Sigstore records include the repository/workflow identity, even while the repository is private. The first tagged release after this change will exercise the real GitHub OIDC signing flow.
+Homebrew checks archive SHA-256 values from the generated cask; it does not perform Cosign verification automatically. Cosign signing is separate from Apple Developer ID signing/notarisation and Windows Authenticode. Snapshot builds skip signing and are for local testing. Public Sigstore records include the repository/workflow identity, even while the repository is private. The release workflow verifies its actual event-ref identity against the resulting bundle.
 
 ### Dependency maintenance
 
