@@ -21,8 +21,6 @@ func ResourceBindings() []ResourceBinding {
 		{"setCustomDevicePostureAttributes", "devices attributes set"},
 		{"deleteCustomDevicePostureAttributes", "devices attributes delete"},
 		{"batchUpdateCustomDevicePostureAttributes", "devices attributes batch-update"},
-		{"listDeviceInvites", "devices invites list"},
-		{"createDeviceInvites", "devices invites create"},
 		{"listUsers", "users list"},
 		{"getUser", "users get"},
 		{"updateUserRole", "users role set"},
@@ -30,15 +28,17 @@ func ResourceBindings() []ResourceBinding {
 		{"suspendUser", "users suspend"},
 		{"restoreUser", "users restore"},
 		{"deleteUser", "users delete"},
-		{"listUserInvites", "user-invites list"},
-		{"createUserInvites", "user-invites create"},
-		{"getUserInvite", "user-invites get"},
-		{"deleteUserInvite", "user-invites delete"},
-		{"resendUserInvite", "user-invites resend"},
-		{"getDeviceInvite", "device-invites get"},
-		{"deleteDeviceInvite", "device-invites delete"},
-		{"resendDeviceInvite", "device-invites resend"},
-		{"acceptDeviceInvite", "device-invites accept"},
+		{"listDeviceInvites", "invites devices list"},
+		{"createDeviceInvites", "invites devices create"},
+		{"getDeviceInvite", "invites devices get"},
+		{"deleteDeviceInvite", "invites devices delete"},
+		{"resendDeviceInvite", "invites devices resend"},
+		{"acceptDeviceInvite", "invites devices accept"},
+		{"listUserInvites", "invites users list"},
+		{"createUserInvites", "invites users create"},
+		{"getUserInvite", "invites users get"},
+		{"deleteUserInvite", "invites users delete"},
+		{"resendUserInvite", "invites users resend"},
 		{"listTailnetKeys", "keys list"},
 		{"getKey", "keys get"},
 		{"createKey", "keys create"},
@@ -99,5 +99,24 @@ func ResourceBindings() []ResourceBinding {
 		{"deleteOAuthApp", "oauth-apps delete"},
 		{"listOrganizationTailnets", "organisations tailnets list"},
 		{"createOrganizationTailnet", "organisations tailnets create"},
+	}
+}
+
+// DeprecatedResourceBindings preserve command paths shipped before invites
+// were consolidated under a single top-level command. They are intentionally
+// excluded from schema coverage and generated documentation.
+func DeprecatedResourceBindings() []ResourceBinding {
+	return []ResourceBinding{
+		{"listDeviceInvites", "devices invites list"},
+		{"createDeviceInvites", "devices invites create"},
+		{"listUserInvites", "user-invites list"},
+		{"createUserInvites", "user-invites create"},
+		{"getUserInvite", "user-invites get"},
+		{"deleteUserInvite", "user-invites delete"},
+		{"resendUserInvite", "user-invites resend"},
+		{"getDeviceInvite", "device-invites get"},
+		{"deleteDeviceInvite", "device-invites delete"},
+		{"resendDeviceInvite", "device-invites resend"},
+		{"acceptDeviceInvite", "device-invites accept"},
 	}
 }

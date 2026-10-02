@@ -143,6 +143,50 @@ func TestEverySchemaOperationHasExecutableResourceCommand(t *testing.T) {
 		t.Fatalf("exercised %d operations", len(observed))
 	}
 }
+
+func TestInviteCommandHierarchyAndDeprecatedPaths(t *testing.T) {
+	root, err := NewRoot(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	canonical := map[string]string{
+		"invites users list":     "listUserInvites",
+		"invites users create":   "createUserInvites",
+		"invites users get":      "getUserInvite",
+		"invites users delete":   "deleteUserInvite",
+		"invites users resend":   "resendUserInvite",
+		"invites devices list":   "listDeviceInvites",
+		"invites devices create": "createDeviceInvites",
+		"invites devices get":    "getDeviceInvite",
+		"invites devices delete": "deleteDeviceInvite",
+		"invites devices resend": "resendDeviceInvite",
+		"invites devices accept": "acceptDeviceInvite",
+	}
+	for path, operation := range canonical {
+		cmd, _, err := root.Find(strings.Fields(path))
+		if err != nil {
+			t.Fatalf("find %q: %v", path, err)
+		}
+		if cmd.Hidden || cmd.Deprecated != "" {
+			t.Errorf("canonical command %q is hidden or deprecated", path)
+		}
+		if cmd.Annotations["operation"] != operation {
+			t.Errorf("%q maps to %q, want %q", path, cmd.Annotations["operation"], operation)
+		}
+	}
+
+	for _, binding := range DeprecatedResourceBindings() {
+		cmd, _, err := root.Find(strings.Fields(binding.Command))
+		if err != nil {
+			t.Fatalf("find deprecated %q: %v", binding.Command, err)
+		}
+		if !cmd.Hidden || cmd.Deprecated == "" {
+			t.Errorf("legacy command %q is not hidden and deprecated", binding.Command)
+		}
+	}
+}
+
 func TestEveryActionRequiresYesBeforeCredentialLookup(t *testing.T) {
 	isolate(t)
 	catalog, _ := newSchemaCatalog()
@@ -184,6 +228,15 @@ func TestResourceFlagsEncodeBodiesAndQueries(t *testing.T) {
 		{[]string{"services", "set", "svc:web", "--ports", "tcp:443", "--display-name", "Web"}, `{"displayName":"Web","ports":["tcp:443"]}`, ""},
 		{[]string{"devices", "attributes", "set", "id", "custom:healthy", "--value-json", "true"}, `{"value":true}`, ""},
 		{[]string{"oauth-apps", "create", "--name", "test", "--redirect-uris", "https://example.com/callback", "--scopes", "auth_keys:create:once"}, `{"name":"test","redirectURIs":["https://example.com/callback"],"scopes":["auth_keys:create:once"]}`, ""},
+		{[]string{"invites", "users", "create", "--email", "user@example.com", "--role", "admin"}, `[{"email":"user@example.com","role":"admin"}]`, ""},
+		{[]string{"invites", "devices", "create", "n123", "--email", "user@example.com", "--allow-exit-node", "--multi-use=false"}, `[{"allowExitNode":true,"email":"user@example.com","multiUse":false}]`, ""},
+		{[]string{"invites", "users", "create"}, `[{}]`, ""},
+		{[]string{"settings", "update", "--devices-approval-on=false", "--https-enabled"}, `{"devicesApprovalOn":false,"httpsEnabled":true}`, ""},
+		{[]string{"settings", "update", "--devices-approval-on-json", "null"}, `{"devicesApprovalOn":null}`, ""},
+		{[]string{"keys", "update", "key-1", "--custom-claim-rules", "team=platform", "--custom-claim-rules", "environment=production"}, `{"customClaimRules":{"environment":"production","team":"platform"}}`, ""},
+		{[]string{"dns", "split", "set", "--route", "example.com=1.1.1.1", "--route", "example.com=8.8.8.8"}, `{"example.com":["1.1.1.1","8.8.8.8"]}`, ""},
+		{[]string{"dns", "split", "update", "--route", "example.com=1.1.1.1", "--clear-domain", "old.example.com"}, `{"example.com":["1.1.1.1"],"old.example.com":null}`, ""},
+		{[]string{"dns", "split", "set", "--clear-all"}, `{}`, ""},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -227,6 +280,14 @@ func TestInvalidInputsFailBeforeNetworkAndCredentialLookup(t *testing.T) {
 		{[]string{"dns", "set", "--yes", "--file", "-"}, `{} {}`},
 		{[]string{"devices", "delete", "id", "--yes", "-o", "invalid"}, ""},
 		{[]string{"devices", "get", "id", "--query", "unknown=x"}, ""},
+		{[]string{"invites", "users", "create", "--email", "user@example.com", "--role", "owner", "--yes"}, ""},
+		{[]string{"invites", "users", "create", "--email", "user@example.com", "--file", "-", "--yes"}, `[{"email":"other@example.com"}]`},
+		{[]string{"settings", "update", "--devices-approval-on", "--devices-approval-on-json", "null", "--yes"}, ""},
+		{[]string{"keys", "update", "key-1", "--custom-claim-rules", "invalid", "--yes"}, ""},
+		{[]string{"dns", "split", "update", "--yes"}, ""},
+		{[]string{"dns", "split", "set", "--route", "invalid", "--yes"}, ""},
+		{[]string{"dns", "split", "set", "--clear-all", "--route", "example.com=1.1.1.1", "--yes"}, ""},
+		{[]string{"dns", "split", "update", "--route", "example.com=1.1.1.1", "--file", "-", "--yes"}, `{"example.com":["8.8.8.8"]}`},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {

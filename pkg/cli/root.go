@@ -177,8 +177,13 @@ func Execute(ctx context.Context, args []string, o Options, in io.Reader, out, s
 	return root.ExecuteContext(ctx)
 }
 func getCommand(r *Runtime) *cobra.Command {
-	get := &cobra.Command{Use: "get", Short: "List and inspect resources"}
-	devices := &cobra.Command{Use: "devices [id]", Aliases: []string{"device", "nodes"}, Short: "List devices or get one device", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	get := &cobra.Command{
+		Use:        "get",
+		Short:      "List and inspect resources",
+		Deprecated: "use the resource-first commands instead",
+		Hidden:     true,
+	}
+	devices := &cobra.Command{Use: "devices [id]", Aliases: []string{"device", "nodes"}, Short: "List devices or get one device", Deprecated: "use 'tailctl devices list' or 'tailctl devices get DEVICE-ID' instead", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := r.Client()
 		if err != nil {
 			return err
@@ -200,7 +205,7 @@ func getCommand(r *Runtime) *cobra.Command {
 		}
 		return r.Print(cmd, ds, cols)
 	}}
-	users := &cobra.Command{Use: "users", Aliases: []string{"user"}, Short: "List users", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	users := &cobra.Command{Use: "users", Aliases: []string{"user"}, Short: "List users", Deprecated: "use 'tailctl users list' instead", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := r.Client()
 		if err != nil {
 			return err
@@ -221,7 +226,11 @@ func getCommand(r *Runtime) *cobra.Command {
 		{"dns", "getDnsConfiguration", "", nil}, {"settings", "getTailnetSettings", "", nil}, {"policy", "getPolicyFile", "", nil},
 	} {
 		resource := resource
-		get.AddCommand(&cobra.Command{Use: resource.name, Short: "Get " + resource.name, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		canonical := "tailctl " + resource.name + " get"
+		if resource.name == "keys" || resource.name == "services" {
+			canonical = "tailctl " + resource.name + " list"
+		}
+		get.AddCommand(&cobra.Command{Use: resource.name, Short: "Get " + resource.name, Deprecated: "use '" + canonical + "' instead", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := r.Client()
 			if err != nil {
 				return err

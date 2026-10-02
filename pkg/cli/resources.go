@@ -42,6 +42,34 @@ func shortDescription(node schemaNode, fallback string) string {
 type fieldBinding struct {
 	key, flag, jsonFlag, kind string
 	node, parameter           schemaNode
+	nullable                  bool
+}
+
+func fieldType(node schemaNode) (string, bool) {
+	switch value := node["type"].(type) {
+	case string:
+		return value, false
+	case []any:
+		kind := ""
+		nullable := false
+		for _, item := range value {
+			candidate, ok := item.(string)
+			if !ok {
+				return "", nullable
+			}
+			if candidate == "null" {
+				nullable = true
+				continue
+			}
+			if kind != "" {
+				return "", nullable
+			}
+			kind = candidate
+		}
+		return kind, nullable
+	default:
+		return "", false
+	}
 }
 
 func fieldValue(cmd *cobra.Command, binding fieldBinding) (any, error) {
@@ -73,6 +101,20 @@ func fieldValue(cmd *cobra.Command, binding fieldBinding) (any, error) {
 		return parsed, nil
 	case "string-array":
 		return cmd.Flags().GetStringArray(binding.flag)
+	case "string-map":
+		values, _ := cmd.Flags().GetStringArray(binding.flag)
+		result := map[string]string{}
+		for _, value := range values {
+			key, item, ok := strings.Cut(value, "=")
+			if !ok || key == "" {
+				return nil, fmt.Errorf("--%s expects KEY=VALUE", binding.flag)
+			}
+			if _, exists := result[key]; exists {
+				return nil, fmt.Errorf("--%s contains duplicate key %q", binding.flag, key)
+			}
+			result[key] = item
+		}
+		return result, nil
 	default:
 		return cmd.Flags().GetString(binding.flag)
 	}
@@ -81,16 +123,22 @@ func (binding fieldBinding) changed(cmd *cobra.Command) bool {
 	return cmd.Flags().Changed(binding.flag) || (binding.jsonFlag != "" && cmd.Flags().Changed(binding.jsonFlag))
 }
 func addFieldFlag(cmd *cobra.Command, key, name string, node schemaNode, allowJSON bool) fieldBinding {
-	binding := fieldBinding{key: key, flag: name, node: node, kind: stringValue(node, "type")}
+	kind, nullable := fieldType(node)
+	binding := fieldBinding{key: key, flag: name, node: node, kind: kind, nullable: nullable}
 	usage := shortDescription(node, key)
 	if binding.kind == "array" && stringValue(object(node["items"]), "type") == "string" {
 		binding.kind = "string-array"
+	}
+	if binding.kind == "object" && stringValue(object(node["additionalProperties"]), "type") == "string" {
+		binding.kind = "string-map"
 	}
 	switch binding.kind {
 	case "boolean":
 		cmd.Flags().Bool(name, false, usage)
 	case "string-array":
 		cmd.Flags().StringArray(name, nil, usage+" (repeat for each value)")
+	case "string-map":
+		cmd.Flags().StringArray(name, nil, usage+" (KEY=VALUE; repeat for each entry)")
 	case "string", "integer", "number":
 		cmd.Flags().String(name, "", usage)
 	default:
@@ -103,6 +151,14 @@ func addFieldFlag(cmd *cobra.Command, key, name string, node schemaNode, allowJS
 	if allowJSON && binding.kind == "string-array" {
 		binding.jsonFlag = name + "-json"
 		cmd.Flags().String(binding.jsonFlag, "", "JSON array for "+key+"; use [] to clear it")
+	}
+	if allowJSON && binding.kind == "string-map" {
+		binding.jsonFlag = name + "-json"
+		cmd.Flags().String(binding.jsonFlag, "", "JSON object for "+key+"; use {} to clear it")
+	}
+	if allowJSON && binding.nullable && binding.kind != "" && binding.jsonFlag == "" {
+		binding.jsonFlag = name + "-json"
+		cmd.Flags().String(binding.jsonFlag, "", "JSON "+binding.kind+" or null; use null to clear it")
 	}
 	return binding
 }
@@ -134,42 +190,84 @@ func addResourceCommands(root *cobra.Command, runtime *Runtime) error {
 			return fmt.Errorf("duplicate operation command %s", op.ID)
 		}
 		seen[op.ID] = true
-		words := strings.Fields(binding.Command)
-		parent := root
-		for _, word := range words[:len(words)-1] {
-			var found *cobra.Command
-			for _, child := range parent.Commands() {
-				if child.Name() == word {
-					found = child
-					break
-				}
-			}
-			if found == nil {
-				found = &cobra.Command{Use: word, Short: "Manage " + strings.ReplaceAll(word, "-", " ")}
-				if word == "organisations" {
-					found.Aliases = []string{"organizations"}
-				}
-				parent.AddCommand(found)
-			}
-			parent = found
-		}
-		cmd, err := resourceCommand(runtime, catalog, catalog.operation(op), words[len(words)-1])
-		if err != nil {
+		if err := addResourceBinding(root, runtime, catalog, binding, false); err != nil {
 			return err
 		}
-		for _, child := range parent.Commands() {
-			if child.Name() == cmd.Name() {
-				return fmt.Errorf("duplicate resource command %s", binding.Command)
-			}
-		}
-		parent.AddCommand(cmd)
 	}
 	for id := range operations {
 		if !seen[id] {
 			return fmt.Errorf("schema operation %s needs a resource command mapping", id)
 		}
 	}
+	for _, binding := range DeprecatedResourceBindings() {
+		if err := addResourceBinding(root, runtime, catalog, binding, true); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func addResourceBinding(root *cobra.Command, runtime *Runtime, catalog *schemaCatalog, binding ResourceBinding, deprecated bool) error {
+	op, ok := api.Operations()[binding.Operation]
+	if !ok {
+		return fmt.Errorf("command maps unknown operation %s", binding.Operation)
+	}
+	words := strings.Fields(binding.Command)
+	parent := root
+	for index, word := range words[:len(words)-1] {
+		var found *cobra.Command
+		for _, child := range parent.Commands() {
+			if child.Name() == word {
+				found = child
+				break
+			}
+		}
+		if found == nil {
+			path := strings.Join(words[:index+1], " ")
+			found = &cobra.Command{Use: word, Short: resourceGroupDescription(path), Hidden: deprecated}
+			if word == "organisations" {
+				found.Aliases = []string{"organizations"}
+			}
+			parent.AddCommand(found)
+		}
+		parent = found
+	}
+	cmd, err := resourceCommand(runtime, catalog, catalog.operation(op), words[len(words)-1])
+	if err != nil {
+		return err
+	}
+	for _, child := range parent.Commands() {
+		if child.Name() == cmd.Name() {
+			return fmt.Errorf("duplicate resource command %s", binding.Command)
+		}
+	}
+	if deprecated {
+		canonical := ""
+		for _, current := range ResourceBindings() {
+			if current.Operation == binding.Operation {
+				canonical = current.Command
+				break
+			}
+		}
+		cmd.Deprecated = "use 'tailctl " + canonical + "' instead"
+		cmd.Hidden = true
+	}
+	parent.AddCommand(cmd)
+	return nil
+}
+
+func resourceGroupDescription(path string) string {
+	switch path {
+	case "invites":
+		return "Manage invitations"
+	case "invites users":
+		return "Manage user invitations"
+	case "invites devices":
+		return "Manage device invitations"
+	default:
+		words := strings.Fields(path)
+		return "Manage " + strings.ReplaceAll(words[len(words)-1], "-", " ")
+	}
 }
 func resourceCommand(runtime *Runtime, catalog *schemaCatalog, info operationSchema, name string) (*cobra.Command, error) {
 	cmd := &cobra.Command{Use: name, Short: info.operation.Summary, Annotations: map[string]string{"operation": info.operation.ID}}
@@ -233,13 +331,24 @@ func resourceCommand(runtime *Runtime, catalog *schemaCatalog, info operationSch
 	contents := object(info.body["content"])
 	mediaTypes := sortedKeys(contents)
 	defaultMedia := "application/json"
+	singleItemArrayBody := false
+	splitDNSBody := info.operation.ID == "setSplitDns" || info.operation.ID == "updateSplitDns"
 	if len(mediaTypes) > 0 {
 		if contents[defaultMedia] == nil {
 			defaultMedia = mediaTypes[0]
 		}
 		cmd.Flags().StringP("file", "f", "", "Request body file, or '-' for stdin; JSON is validated against the pinned schema")
 		cmd.Flags().String("content-type", defaultMedia, "Request media type: "+strings.Join(mediaTypes, ", "))
-		bodySchema := catalog.objectShape(object(object(contents["application/json"])["schema"]))
+		bodySchema := catalog.resolve(object(object(contents["application/json"])["schema"]))
+		if stringValue(bodySchema, "type") == "array" {
+			itemSchema := catalog.objectShape(object(bodySchema["items"]))
+			if stringValue(itemSchema, "type") == "object" && len(object(itemSchema["properties"])) > 0 {
+				bodySchema = itemSchema
+				singleItemArrayBody = true
+			}
+		} else {
+			bodySchema = catalog.objectShape(bodySchema)
+		}
 		for _, key := range sortedKeys(object(bodySchema["properties"])) {
 			node := catalog.resolve(object(object(bodySchema["properties"])[key]))
 			if boolValue(node, "readOnly") || sensitiveField(key, node) {
@@ -248,7 +357,18 @@ func resourceCommand(runtime *Runtime, catalog *schemaCatalog, info operationSch
 			binding := addFieldFlag(cmd, key, safeBodyFlag(key, cmd), node, true)
 			bodyBindings = append(bodyBindings, binding)
 		}
-		cmd.Long += "\nUse --file for arrays, policy documents, maps, complex unions and secret fields. Body flags and --file are mutually exclusive."
+		if splitDNSBody {
+			cmd.Flags().StringArray("route", nil, "Split DNS route DOMAIN=NAMESERVER (repeat for additional nameservers or domains)")
+			cmd.Flags().StringArray("clear-domain", nil, "Set a domain's nameservers to null (repeatable)")
+			if info.operation.ID == "setSplitDns" {
+				cmd.Flags().Bool("clear-all", false, "Replace split DNS with an empty map")
+			}
+		}
+		if singleItemArrayBody {
+			cmd.Long += "\nBody flags create one item. Use --file for multiple items or the complete JSON body. Body flags and --file are mutually exclusive."
+		} else {
+			cmd.Long += "\nUse --file for complete bodies, policy documents, nested batches and secret fields. Body flags and --file are mutually exclusive."
+		}
 	}
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if cmd.Flags().Lookup("yes") != nil {
@@ -382,6 +502,19 @@ func resourceCommand(runtime *Runtime, catalog *schemaCatalog, info operationSch
 			if file != "" && len(fields) > 0 {
 				return errors.New("--file cannot be combined with request body flags")
 			}
+			hasSplitDNSFlags := false
+			if splitDNSBody {
+				routes, _ := cmd.Flags().GetStringArray("route")
+				cleared, _ := cmd.Flags().GetStringArray("clear-domain")
+				hasSplitDNSFlags = len(routes) > 0 || len(cleared) > 0
+				if info.operation.ID == "setSplitDns" {
+					clearAll, _ := cmd.Flags().GetBool("clear-all")
+					hasSplitDNSFlags = hasSplitDNSFlags || clearAll
+				}
+				if file != "" && hasSplitDNSFlags {
+					return errors.New("--file cannot be combined with split DNS flags")
+				}
+			}
 			var data []byte
 			if file != "" {
 				var reader io.Reader = cmd.InOrStdin()
@@ -394,6 +527,16 @@ func resourceCommand(runtime *Runtime, catalog *schemaCatalog, info operationSch
 					reader = f
 				}
 				data, err = io.ReadAll(io.LimitReader(reader, maxRequestBytes+1))
+				if err != nil {
+					return err
+				}
+			} else if splitDNSBody {
+				data, err = splitDNSRequestBody(cmd, info.operation.ID)
+				if err != nil {
+					return err
+				}
+			} else if singleItemArrayBody {
+				data, err = json.Marshal([]any{fields})
 				if err != nil {
 					return err
 				}
@@ -479,6 +622,46 @@ func resourceCommand(runtime *Runtime, catalog *schemaCatalog, info operationSch
 		return printResource(runtime, cmd, info.operation, value)
 	}
 	return cmd, nil
+}
+
+func splitDNSRequestBody(cmd *cobra.Command, operation string) ([]byte, error) {
+	routes, _ := cmd.Flags().GetStringArray("route")
+	cleared, _ := cmd.Flags().GetStringArray("clear-domain")
+	clearAll := false
+	if operation == "setSplitDns" {
+		clearAll, _ = cmd.Flags().GetBool("clear-all")
+	}
+	if clearAll && (len(routes) > 0 || len(cleared) > 0) {
+		return nil, errors.New("--clear-all cannot be combined with --route or --clear-domain")
+	}
+	if clearAll {
+		return []byte("{}"), nil
+	}
+
+	body := map[string]any{}
+	for _, route := range routes {
+		domain, nameserver, ok := strings.Cut(route, "=")
+		if !ok || domain == "" || nameserver == "" {
+			return nil, errors.New("--route expects DOMAIN=NAMESERVER")
+		}
+		if body[domain] == nil {
+			body[domain] = []string{}
+		}
+		body[domain] = append(body[domain].([]string), nameserver)
+	}
+	for _, domain := range cleared {
+		if domain == "" {
+			return nil, errors.New("--clear-domain must not be empty")
+		}
+		if _, exists := body[domain]; exists {
+			return nil, fmt.Errorf("domain %q cannot be both routed and cleared", domain)
+		}
+		body[domain] = nil
+	}
+	if len(body) == 0 {
+		return nil, errors.New("split DNS requires --route, --clear-domain or --file")
+	}
+	return json.Marshal(body)
 }
 func validFormat(format string) bool {
 	return format == "table" || format == "wide" || format == "json" || format == "yaml" || format == ""
