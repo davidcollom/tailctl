@@ -25,9 +25,6 @@ func printResource(runtime *Runtime, cmd *cobra.Command, op api.Operation, value
 	cols := []output.Column(nil)
 	switch family {
 	case "devices":
-		if op.ID == "listDeviceInvites" || op.ID == "createDeviceInvites" {
-			cols = columns("id", "deviceId", "email", "multiUse", "accepted")
-		}
 		if op.ID == "listTailnetDevices" || op.ID == "getDevice" {
 			cols = columns("nodeId", "hostname", "os", "addresses", "authorized")
 			if runtime.Config.Output == "wide" {
@@ -39,10 +36,12 @@ func printResource(runtime *Runtime, cmd *cobra.Command, op api.Operation, value
 		if runtime.Config.Output == "wide" {
 			cols = append(cols, columns("deviceCount", "lastSeen", "currentlyConnected")...)
 		}
-	case "user-invites":
-		cols = columns("id", "email", "role", "lastEmailSentAt")
-	case "device-invites":
-		cols = columns("id", "deviceId", "email", "multiUse", "accepted")
+	case "invites", "user-invites", "device-invites":
+		if strings.Contains(op.ID, "UserInvite") || strings.Contains(op.ID, "UserInvites") {
+			cols = columns("id", "email", "role", "lastEmailSentAt")
+		} else {
+			cols = columns("id", "deviceId", "email", "multiUse", "accepted")
+		}
 	case "keys":
 		cols = columns("id", "keyType", "description", "created", "expires", "revoked")
 		if runtime.Config.Output == "wide" {

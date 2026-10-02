@@ -188,9 +188,9 @@ The pinned schema defines **93 operations across 60 paths**, and every operation
 
 | Resource family | Operations | Includes |
 | --- | ---: | --- |
-| `devices` | 17 | Authorisation, names, tags, keys, IPs, routes, posture attributes and device invitations |
+| `devices` | 15 | Authorisation, names, tags, keys, IPs, routes and posture attributes |
 | `users` | 7 | Listing, roles, approval, suspension, restoration and deletion |
-| `user-invites`, `device-invites` | 9 | Creation, inspection, resend, acceptance and deletion |
+| `invites users`, `invites devices` | 11 | Creation, inspection, resend, acceptance and deletion |
 | `keys` | 5 | Auth/client/federated key management |
 | `dns` | 11 | Complete configuration, nameservers, preferences, search paths and split DNS |
 | `policy` | 4 | Read, replace, preview and validate/test policies |
@@ -212,6 +212,8 @@ tailctl devices list -o wide
 tailctl devices list --fields all --filter hostname=worker-01
 tailctl devices routes get n123
 tailctl users list --role admin --type member
+tailctl invites users list
+tailctl invites devices list n123
 tailctl webhooks list
 tailctl oauth-apps list
 
@@ -221,7 +223,11 @@ tailctl devices rename n123 --name worker-02 --yes
 tailctl devices routes set n123 --routes 10.0.0.0/8 --routes 192.168.0.0/16 --yes
 tailctl devices tags set n123 --tags-json '[]' --yes
 tailctl users role set u123 --role member --yes
+tailctl invites users create --email user@example.com --role member --yes
+tailctl invites devices create n123 --email user@example.com --allow-exit-node --yes
 tailctl dns preferences set --magic-dns=false --yes
+tailctl dns split update --route example.com=1.1.1.1 --route example.com=8.8.8.8 --yes
+tailctl settings update --devices-approval-on=false --https-enabled --yes
 tailctl services set svc:web --ports tcp:443 --display-name Web --yes
 tailctl services approval set svc:web n123 --approved --yes
 
@@ -230,7 +236,34 @@ tailctl logs audit list --start 2026-09-01T00:00:00Z --end 2026-09-02T00:00:00Z
 tailctl logs network list --start 2026-09-01T00:00:00Z --end 2026-09-02T00:00:00Z -o json
 ```
 
-Repeat array flags for each value; use `--FIELD-json '[]'` to send an empty array. Object/union fields use JSON flags, for example `devices attributes set n123 custom:healthy --value-json true --yes`. Complex bodies, top-level arrays, policy documents and secret fields use `--file PATH` or `--file -` for stdin. Body flags and `--file` cannot be combined. Resource commands validate JSON bodies and schema parameter types, enums and bounds before credential lookup or HTTP requests. The server still checks permissions and business rules; HuJSON is passed through for server validation.
+Repeat array flags for each value; use `--FIELD-json '[]'` to send an empty array. Object/union fields use JSON flags, for example `devices attributes set n123 custom:healthy --value-json true --yes`. Complex bodies, multi-item batches, policy documents and secret fields use `--file PATH` or `--file -` for stdin. Body flags and `--file` cannot be combined. Resource commands validate JSON bodies and schema parameter types, enums and bounds before credential lookup or HTTP requests. The server still checks permissions and business rules; HuJSON is passed through for server validation.
+
+For schema endpoints whose body is an array of simple objects, such as user and
+device invitations, body flags create one item. Omitting `--email` creates an
+invite URL instead of emailing it. Use `--file` for batches:
+
+```sh
+printf '%s' '[{"email":"alice@example.com","role":"member"},{"email":"bob@example.com","role":"admin"}]' |
+  tailctl invites users create --file - --yes
+```
+
+Nullable scalar settings use normal flags, including explicit false values such
+as `--devices-approval-on=false`. Their `--FIELD-json null` form remains
+available when the API distinguishes null from false. String maps accept
+repeatable `KEY=VALUE` flags, for example:
+
+```sh
+tailctl keys update KEY-ID \
+  --custom-claim-rules team=platform \
+  --custom-claim-rules environment=production \
+  --yes
+```
+
+Split DNS has dedicated repeatable route flags. Repeat a domain to add multiple
+nameservers, use `--clear-domain DOMAIN` for a null mapping, or
+`dns split set --clear-all --yes` to replace the configuration with an empty
+map. Arbitrary policy/HuJSON documents, nested batch data and secret-bearing
+bodies intentionally continue to use `--file` or explicit JSON flags.
 
 ```sh
 # Inspect required fields, enums, body shapes and referenced schemas locally.
@@ -255,7 +288,9 @@ Tables unwrap list envelopes, use resource-specific columns and redact credentia
 
 ### Generic operation access
 
-The existing `get` helpers and generic operation interface remain available:
+The generic operation interface remains available. The former `tailctl get`
+tree is hidden and deprecated, but remains executable for compatibility with
+pre-v1 scripts; use the resource-first commands in new usage.
 
 ```sh
 # Shows every operation ID, HTTP route and corresponding resource command.

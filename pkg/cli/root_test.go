@@ -36,18 +36,44 @@ func TestGetDevicesAndFlagPrecedence(t *testing.T) {
 	}))
 	defer s.Close()
 	var out bytes.Buffer
-	err := Execute(context.Background(), []string{"get", "devices", "--tailnet", "flag.example", "--server", s.URL + "/api/v2", "-o", "json"}, Options{}, strings.NewReader(""), &out, &out)
+	err := Execute(context.Background(), []string{"devices", "list", "--tailnet", "flag.example", "--server", s.URL + "/api/v2", "-o", "json"}, Options{}, strings.NewReader(""), &out, &out)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got []map[string]any
+	var got struct {
+		Devices []map[string]any `json:"devices"`
+	}
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got[0]["hostname"] != "worker" {
+	if got.Devices[0]["hostname"] != "worker" {
 		t.Fatalf("result: %v", got)
 	}
 }
+
+func TestLegacyGetIsHiddenAndDeprecated(t *testing.T) {
+	root, err := NewRoot(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	get, _, err := root.Find([]string{"get"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !get.Hidden || get.Deprecated == "" {
+		t.Fatal("legacy get command must be hidden and deprecated")
+	}
+	for _, resource := range []string{"devices", "users", "keys", "services", "dns", "settings", "policy"} {
+		cmd, _, err := root.Find([]string{"get", resource})
+		if err != nil {
+			t.Fatalf("find get %s: %v", resource, err)
+		}
+		if cmd.Deprecated == "" {
+			t.Errorf("get %s is not deprecated", resource)
+		}
+	}
+}
+
 func TestMutationGuardBeforeAuthentication(t *testing.T) {
 	isolate(t)
 	var out bytes.Buffer

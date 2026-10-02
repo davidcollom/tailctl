@@ -6,11 +6,11 @@ Every operation has a named resource command. Path IDs are positional; `--tailne
 
 Tables redact secrets. JSON/YAML preserve the full response, including pagination cursors and secrets. `--raw` writes exact response bytes. `--response-file PATH` reserves a new file before the request and saves exact bytes with mode 0600 on Unix; Windows uses the user's filesystem ACLs. Files are never overwritten. Lists make one request; follow cursor parameters explicitly when supported.
 
-Use `tailctl api describe OPERATION` for request/response schemas with all referenced components, without credentials. `tailctl api list` shows command mappings. The existing `get` helpers and generic `api call` remain available.
+Use `tailctl api describe OPERATION` for request/response schemas with all referenced components, without credentials. `tailctl api list` shows command mappings. The generic `api call` remains available; the old `tailctl get` tree is retained only as hidden compatibility for pre-v1 scripts.
 
 ## Coverage
 
-93 operations across 16 command families.
+93 operations across 15 command families.
 
 | Command | Operation | Method | Path |
 | --- | --- | --- | --- |
@@ -29,8 +29,6 @@ Use `tailctl api describe OPERATION` for request/response schemas with all refer
 | `tailctl devices attributes set` | `setCustomDevicePostureAttributes` | POST | `/device/{deviceId}/attributes/{attributeKey}` |
 | `tailctl devices attributes delete` | `deleteCustomDevicePostureAttributes` | DELETE | `/device/{deviceId}/attributes/{attributeKey}` |
 | `tailctl devices attributes batch-update` | `batchUpdateCustomDevicePostureAttributes` | PATCH | `/tailnet/{tailnet}/device-attributes` |
-| `tailctl devices invites list` | `listDeviceInvites` | GET | `/device/{deviceId}/device-invites` |
-| `tailctl devices invites create` | `createDeviceInvites` | POST | `/device/{deviceId}/device-invites` |
 | `tailctl users list` | `listUsers` | GET | `/tailnet/{tailnet}/users` |
 | `tailctl users get` | `getUser` | GET | `/users/{userId}` |
 | `tailctl users role set` | `updateUserRole` | POST | `/users/{userId}/role` |
@@ -38,15 +36,17 @@ Use `tailctl api describe OPERATION` for request/response schemas with all refer
 | `tailctl users suspend` | `suspendUser` | POST | `/users/{userId}/suspend` |
 | `tailctl users restore` | `restoreUser` | POST | `/users/{userId}/restore` |
 | `tailctl users delete` | `deleteUser` | POST | `/users/{userId}/delete` |
-| `tailctl user-invites list` | `listUserInvites` | GET | `/tailnet/{tailnet}/user-invites` |
-| `tailctl user-invites create` | `createUserInvites` | POST | `/tailnet/{tailnet}/user-invites` |
-| `tailctl user-invites get` | `getUserInvite` | GET | `/user-invites/{userInviteId}` |
-| `tailctl user-invites delete` | `deleteUserInvite` | DELETE | `/user-invites/{userInviteId}` |
-| `tailctl user-invites resend` | `resendUserInvite` | POST | `/user-invites/{userInviteId}/resend` |
-| `tailctl device-invites get` | `getDeviceInvite` | GET | `/device-invites/{deviceInviteId}` |
-| `tailctl device-invites delete` | `deleteDeviceInvite` | DELETE | `/device-invites/{deviceInviteId}` |
-| `tailctl device-invites resend` | `resendDeviceInvite` | POST | `/device-invites/{deviceInviteId}/resend` |
-| `tailctl device-invites accept` | `acceptDeviceInvite` | POST | `/device-invites/-/accept` |
+| `tailctl invites devices list` | `listDeviceInvites` | GET | `/device/{deviceId}/device-invites` |
+| `tailctl invites devices create` | `createDeviceInvites` | POST | `/device/{deviceId}/device-invites` |
+| `tailctl invites devices get` | `getDeviceInvite` | GET | `/device-invites/{deviceInviteId}` |
+| `tailctl invites devices delete` | `deleteDeviceInvite` | DELETE | `/device-invites/{deviceInviteId}` |
+| `tailctl invites devices resend` | `resendDeviceInvite` | POST | `/device-invites/{deviceInviteId}/resend` |
+| `tailctl invites devices accept` | `acceptDeviceInvite` | POST | `/device-invites/-/accept` |
+| `tailctl invites users list` | `listUserInvites` | GET | `/tailnet/{tailnet}/user-invites` |
+| `tailctl invites users create` | `createUserInvites` | POST | `/tailnet/{tailnet}/user-invites` |
+| `tailctl invites users get` | `getUserInvite` | GET | `/user-invites/{userInviteId}` |
+| `tailctl invites users delete` | `deleteUserInvite` | DELETE | `/user-invites/{userInviteId}` |
+| `tailctl invites users resend` | `resendUserInvite` | POST | `/user-invites/{userInviteId}/resend` |
 | `tailctl keys list` | `listTailnetKeys` | GET | `/tailnet/{tailnet}/keys` |
 | `tailctl keys get` | `getKey` | GET | `/tailnet/{tailnet}/keys/{keyId}` |
 | `tailctl keys create` | `createKey` | POST | `/tailnet/{tailnet}/keys` |
@@ -393,41 +393,6 @@ Operation: `batchUpdateCustomDevicePostureAttributes` · **PATCH** `/tailnet/{ta
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
 | `--yes` | `bool` | Explicitly allow this API action |
 
-### devices invites list
-
-List device invites
-
-```sh
-tailctl devices invites list DEVICE-ID [flags]
-```
-
-Operation: `listDeviceInvites` · **GET** `/device/{deviceId}/device-invites`
-
-| Flag | Type | Description |
-| --- | --- | --- |
-| `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
-| `--raw` | `bool` | Write the exact response bytes, including HuJSON |
-| `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
-
-### devices invites create
-
-Create device invites
-
-```sh
-tailctl devices invites create DEVICE-ID [flags]
-```
-
-Operation: `createDeviceInvites` · **POST** `/device/{deviceId}/device-invites`
-
-| Flag | Type | Description |
-| --- | --- | --- |
-| `--content-type` | `string` | Request media type: application/json |
-| `--file` | `string` | Request body file, or '-' for stdin; JSON is validated against the pinned schema |
-| `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
-| `--raw` | `bool` | Write the exact response bytes, including HuJSON |
-| `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
-| `--yes` | `bool` | Explicitly allow this API action |
-
 ## users
 
 ### users list
@@ -552,17 +517,17 @@ Operation: `deleteUser` · **POST** `/users/{userId}/delete`
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
 | `--yes` | `bool` | Explicitly allow this API action |
 
-## user-invites
+## invites
 
-### user-invites list
+### invites devices list
 
-List user invites
+List device invites
 
 ```sh
-tailctl user-invites list [flags]
+tailctl invites devices list DEVICE-ID [flags]
 ```
 
-Operation: `listUserInvites` · **GET** `/tailnet/{tailnet}/user-invites`
+Operation: `listDeviceInvites` · **GET** `/device/{deviceId}/device-invites`
 
 | Flag | Type | Description |
 | --- | --- | --- |
@@ -570,83 +535,34 @@ Operation: `listUserInvites` · **GET** `/tailnet/{tailnet}/user-invites`
 | `--raw` | `bool` | Write the exact response bytes, including HuJSON |
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
 
-### user-invites create
+### invites devices create
 
-Create user invites
+Create device invites
 
 ```sh
-tailctl user-invites create [flags]
+tailctl invites devices create DEVICE-ID [flags]
 ```
 
-Operation: `createUserInvites` · **POST** `/tailnet/{tailnet}/user-invites`
+Operation: `createDeviceInvites` · **POST** `/device/{deviceId}/device-invites`
 
 | Flag | Type | Description |
 | --- | --- | --- |
+| `--allow-exit-node` | `bool` | Whether the invited user can use the device as an exit node when it advertises as one. |
 | `--content-type` | `string` | Request media type: application/json |
+| `--email` | `string` | The email to send the created invite to. |
 | `--file` | `string` | Request body file, or '-' for stdin; JSON is validated against the pinned schema |
+| `--multi-use` | `bool` | Whether the invite can be accepted more than once. |
 | `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
 | `--raw` | `bool` | Write the exact response bytes, including HuJSON |
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
 | `--yes` | `bool` | Explicitly allow this API action |
 
-### user-invites get
-
-Get a user invite
-
-```sh
-tailctl user-invites get USER-INVITE-ID [flags]
-```
-
-Operation: `getUserInvite` · **GET** `/user-invites/{userInviteId}`
-
-| Flag | Type | Description |
-| --- | --- | --- |
-| `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
-| `--raw` | `bool` | Write the exact response bytes, including HuJSON |
-| `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
-
-### user-invites delete
-
-Delete a user invite
-
-```sh
-tailctl user-invites delete USER-INVITE-ID [flags]
-```
-
-Operation: `deleteUserInvite` · **DELETE** `/user-invites/{userInviteId}`
-
-| Flag | Type | Description |
-| --- | --- | --- |
-| `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
-| `--raw` | `bool` | Write the exact response bytes, including HuJSON |
-| `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
-| `--yes` | `bool` | Explicitly allow this API action |
-
-### user-invites resend
-
-Resend a user invite
-
-```sh
-tailctl user-invites resend USER-INVITE-ID [flags]
-```
-
-Operation: `resendUserInvite` · **POST** `/user-invites/{userInviteId}/resend`
-
-| Flag | Type | Description |
-| --- | --- | --- |
-| `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
-| `--raw` | `bool` | Write the exact response bytes, including HuJSON |
-| `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
-| `--yes` | `bool` | Explicitly allow this API action |
-
-## device-invites
-
-### device-invites get
+### invites devices get
 
 Get a device invite
 
 ```sh
-tailctl device-invites get DEVICE-INVITE-ID [flags]
+tailctl invites devices get DEVICE-INVITE-ID [flags]
 ```
 
 Operation: `getDeviceInvite` · **GET** `/device-invites/{deviceInviteId}`
@@ -657,12 +573,12 @@ Operation: `getDeviceInvite` · **GET** `/device-invites/{deviceInviteId}`
 | `--raw` | `bool` | Write the exact response bytes, including HuJSON |
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
 
-### device-invites delete
+### invites devices delete
 
 Delete a device invite
 
 ```sh
-tailctl device-invites delete DEVICE-INVITE-ID [flags]
+tailctl invites devices delete DEVICE-INVITE-ID [flags]
 ```
 
 Operation: `deleteDeviceInvite` · **DELETE** `/device-invites/{deviceInviteId}`
@@ -674,12 +590,12 @@ Operation: `deleteDeviceInvite` · **DELETE** `/device-invites/{deviceInviteId}`
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
 | `--yes` | `bool` | Explicitly allow this API action |
 
-### device-invites resend
+### invites devices resend
 
 Resend a device invite
 
 ```sh
-tailctl device-invites resend DEVICE-INVITE-ID [flags]
+tailctl invites devices resend DEVICE-INVITE-ID [flags]
 ```
 
 Operation: `resendDeviceInvite` · **POST** `/device-invites/{deviceInviteId}/resend`
@@ -691,12 +607,12 @@ Operation: `resendDeviceInvite` · **POST** `/device-invites/{deviceInviteId}/re
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
 | `--yes` | `bool` | Explicitly allow this API action |
 
-### device-invites accept
+### invites devices accept
 
 Accept a device invite
 
 ```sh
-tailctl device-invites accept [flags]
+tailctl invites devices accept [flags]
 ```
 
 Operation: `acceptDeviceInvite` · **POST** `/device-invites/-/accept`
@@ -706,6 +622,93 @@ Operation: `acceptDeviceInvite` · **POST** `/device-invites/-/accept`
 | `--content-type` | `string` | Request media type: application/json |
 | `--file` | `string` | Request body file, or '-' for stdin; JSON is validated against the pinned schema |
 | `--invite` | `string` | The URL of the invite (in the form `https://login.tailscale.com/admin/invite/{code}`) or the `{code}` component of the URL. |
+| `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
+| `--raw` | `bool` | Write the exact response bytes, including HuJSON |
+| `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
+| `--yes` | `bool` | Explicitly allow this API action |
+
+### invites users list
+
+List user invites
+
+```sh
+tailctl invites users list [flags]
+```
+
+Operation: `listUserInvites` · **GET** `/tailnet/{tailnet}/user-invites`
+
+| Flag | Type | Description |
+| --- | --- | --- |
+| `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
+| `--raw` | `bool` | Write the exact response bytes, including HuJSON |
+| `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
+
+### invites users create
+
+Create user invites
+
+```sh
+tailctl invites users create [flags]
+```
+
+Operation: `createUserInvites` · **POST** `/tailnet/{tailnet}/user-invites`
+
+| Flag | Type | Description |
+| --- | --- | --- |
+| `--content-type` | `string` | Request media type: application/json |
+| `--email` | `string` | Optionally specifies the email to send the created invite. |
+| `--file` | `string` | Request body file, or '-' for stdin; JSON is validated against the pinned schema |
+| `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
+| `--raw` | `bool` | Write the exact response bytes, including HuJSON |
+| `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
+| `--role` | `string` | Optionally specifies a user role to assign the invited user. (choices: [member admin it-admin network-admin billing-admin auditor]) |
+| `--yes` | `bool` | Explicitly allow this API action |
+
+### invites users get
+
+Get a user invite
+
+```sh
+tailctl invites users get USER-INVITE-ID [flags]
+```
+
+Operation: `getUserInvite` · **GET** `/user-invites/{userInviteId}`
+
+| Flag | Type | Description |
+| --- | --- | --- |
+| `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
+| `--raw` | `bool` | Write the exact response bytes, including HuJSON |
+| `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
+
+### invites users delete
+
+Delete a user invite
+
+```sh
+tailctl invites users delete USER-INVITE-ID [flags]
+```
+
+Operation: `deleteUserInvite` · **DELETE** `/user-invites/{userInviteId}`
+
+| Flag | Type | Description |
+| --- | --- | --- |
+| `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
+| `--raw` | `bool` | Write the exact response bytes, including HuJSON |
+| `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
+| `--yes` | `bool` | Explicitly allow this API action |
+
+### invites users resend
+
+Resend a user invite
+
+```sh
+tailctl invites users resend USER-INVITE-ID [flags]
+```
+
+Operation: `resendUserInvite` · **POST** `/user-invites/{userInviteId}/resend`
+
+| Flag | Type | Description |
+| --- | --- | --- |
 | `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
 | `--raw` | `bool` | Write the exact response bytes, including HuJSON |
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
@@ -761,7 +764,8 @@ Operation: `createKey` · **POST** `/tailnet/{tailnet}/keys`
 | `--audience` | `string` | The value used when matching against the `aud` claim from an OIDC identity token. |
 | `--capabilities-json` | `string` | `capabilities` is a mapping of resources to permissible actions. (JSON value) |
 | `--content-type` | `string` | Request media type: application/json |
-| `--custom-claim-rules-json` | `string` | A map of claim names to pattern strings used to match against arbitrary claims in the OIDC identity token. (JSON value) |
+| `--custom-claim-rules` | `stringArray` | A map of claim names to pattern strings used to match against arbitrary claims in the OIDC identity token. (KEY=VALUE; repeat for each entry) |
+| `--custom-claim-rules-json` | `string` | JSON object for customClaimRules; use {} to clear it |
 | `--description` | `string` | A short string specifying the purpose of the key. Can be a maximum of 50 alphanumeric characters. Hyphens and spaces are also allowed. |
 | `--expiry-seconds` | `string` | Specifies the duration in seconds until the key expires. Defaults to 90 days if not supplied. |
 | `--file` | `string` | Request body file, or '-' for stdin; JSON is validated against the pinned schema |
@@ -791,7 +795,8 @@ Operation: `setKey` · **PUT** `/tailnet/{tailnet}/keys/{keyId}`
 | --- | --- | --- |
 | `--audience` | `string` | The value used when matching against the `aud` claim from an OIDC identity token. |
 | `--content-type` | `string` | Request media type: application/json |
-| `--custom-claim-rules-json` | `string` | A map of claim names to pattern strings used to match against arbitrary claims in the OIDC identity token. (JSON value) |
+| `--custom-claim-rules` | `stringArray` | A map of claim names to pattern strings used to match against arbitrary claims in the OIDC identity token. (KEY=VALUE; repeat for each entry) |
+| `--custom-claim-rules-json` | `string` | JSON object for customClaimRules; use {} to clear it |
 | `--description` | `string` | A short string specifying the purpose of the key. Can be a maximum of 50 alphanumeric characters. Hyphens and spaces are also allowed. |
 | `--file` | `string` | Request body file, or '-' for stdin; JSON is validated against the pinned schema |
 | `--issuer` | `string` | The issuer of the OIDC identity token used in the token exchange. Must be a valid https:// URL. |
@@ -1003,11 +1008,14 @@ Operation: `setSplitDns` · **PUT** `/tailnet/{tailnet}/dns/split-dns`
 
 | Flag | Type | Description |
 | --- | --- | --- |
+| `--clear-all` | `bool` | Replace split DNS with an empty map |
+| `--clear-domain` | `stringArray` | Set a domain's nameservers to null (repeatable) |
 | `--content-type` | `string` | Request media type: application/json |
 | `--file` | `string` | Request body file, or '-' for stdin; JSON is validated against the pinned schema |
 | `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
 | `--raw` | `bool` | Write the exact response bytes, including HuJSON |
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
+| `--route` | `stringArray` | Split DNS route DOMAIN=NAMESERVER (repeat for additional nameservers or domains) |
 | `--yes` | `bool` | Explicitly allow this API action |
 
 ### dns split update
@@ -1022,11 +1030,13 @@ Operation: `updateSplitDns` · **PATCH** `/tailnet/{tailnet}/dns/split-dns`
 
 | Flag | Type | Description |
 | --- | --- | --- |
+| `--clear-domain` | `stringArray` | Set a domain's nameservers to null (repeatable) |
 | `--content-type` | `string` | Request media type: application/json |
 | `--file` | `string` | Request body file, or '-' for stdin; JSON is validated against the pinned schema |
 | `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
 | `--raw` | `bool` | Write the exact response bytes, including HuJSON |
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
+| `--route` | `stringArray` | Split DNS route DOMAIN=NAMESERVER (repeat for additional nameservers or domains) |
 | `--yes` | `bool` | Explicitly allow this API action |
 
 ## policy
@@ -1587,20 +1597,28 @@ Operation: `updateTailnetSettings` · **PATCH** `/tailnet/{tailnet}/settings`
 | Flag | Type | Description |
 | --- | --- | --- |
 | `--acls-external-link` | `string` | Link to the external tailnet policy definition or management solution for this tailnet. |
-| `--acls-externally-managed-on-json` | `string` | Prevents users from editing policies in the admin console to avoid conflicts with external management workflows like GitOps or Terraform. (JSON value) |
+| `--acls-externally-managed-on` | `bool` | Prevents users from editing policies in the admin console to avoid conflicts with external management workflows like GitOps or Terraform. |
+| `--acls-externally-managed-on-json` | `string` | JSON boolean or null; use null to clear it |
 | `--content-type` | `string` | Request media type: application/json |
-| `--devices-approval-on-json` | `string` | Whether [device approval](/docs/features/access-control/device-management/device-approval) is enabled for the tailnet. (JSON value) |
-| `--devices-auto-updates-on-json` | `string` | Whether [auto updates](/docs/features/client/update#auto-updates) are enabled for devices that belong to this tailnet. (JSON value) |
+| `--devices-approval-on` | `bool` | Whether [device approval](/docs/features/access-control/device-management/device-approval) is enabled for the tailnet. |
+| `--devices-approval-on-json` | `string` | JSON boolean or null; use null to clear it |
+| `--devices-auto-updates-on` | `bool` | Whether [auto updates](/docs/features/client/update#auto-updates) are enabled for devices that belong to this tailnet. |
+| `--devices-auto-updates-on-json` | `string` | JSON boolean or null; use null to clear it |
 | `--devices-key-duration-days` | `string` | The [key expiry](/docs/features/access-control/key-expiry) duration for devices on this tailnet. |
 | `--file` | `string` | Request body file, or '-' for stdin; JSON is validated against the pinned schema |
-| `--https-enabled-json` | `string` | Whether provisioning of [HTTPS certificates](/docs/how-to/set-up-https-certificates) is enabled for this tailnet. (JSON value) |
-| `--network-flow-logging-on-json` | `string` | Whether [network flog logs](/docs/features/logging/network-flow-logs) are enabled for the tailnet. (JSON value) |
-| `--posture-identity-collection-on-json` | `string` | Whether [identity collection](/docs/features/access-control/device-management/how-to/manage-identity) is enabled for [device posture](/docs/features/device-posture) integrations for the tailnet. (JSON value) |
+| `--https-enabled` | `bool` | Whether provisioning of [HTTPS certificates](/docs/how-to/set-up-https-certificates) is enabled for this tailnet. |
+| `--https-enabled-json` | `string` | JSON boolean or null; use null to clear it |
+| `--network-flow-logging-on` | `bool` | Whether [network flog logs](/docs/features/logging/network-flow-logs) are enabled for the tailnet. |
+| `--network-flow-logging-on-json` | `string` | JSON boolean or null; use null to clear it |
+| `--posture-identity-collection-on` | `bool` | Whether [identity collection](/docs/features/access-control/device-management/how-to/manage-identity) is enabled for [device posture](/docs/features/device-posture) integrations for the tailnet. |
+| `--posture-identity-collection-on-json` | `string` | JSON boolean or null; use null to clear it |
 | `--query` | `stringArray` | Additional schema query KEY=VALUE (repeatable; required query flags can also be supplied here) |
 | `--raw` | `bool` | Write the exact response bytes, including HuJSON |
-| `--regional-routing-on-json` | `string` | Whether [regional routing](/docs/how-to/set-up-high-availability#regional-routing) is enabled for the tailnet. (JSON value) |
+| `--regional-routing-on` | `bool` | Whether [regional routing](/docs/how-to/set-up-high-availability#regional-routing) is enabled for the tailnet. |
+| `--regional-routing-on-json` | `string` | JSON boolean or null; use null to clear it |
 | `--response-file` | `string` | Save the exact response to a new file with mode 0600 (no overwrite) |
-| `--users-approval-on-json` | `string` | Whether [user approval](/docs/features/access-control/user-approval) is enabled for this tailnet. (JSON value) |
+| `--users-approval-on` | `bool` | Whether [user approval](/docs/features/access-control/user-approval) is enabled for this tailnet. |
+| `--users-approval-on-json` | `string` | JSON boolean or null; use null to clear it |
 | `--users-role-allowed-to-join-external-tailnets` | `string` | Which user roles are allowed to [join external tailnets](/docs/features/sharing/how-to/invite-any-user). (choices: [none admin member]) |
 | `--yes` | `bool` | Explicitly allow this API action |
 
