@@ -24,23 +24,27 @@ if [[ "$(uname -s)" == Darwin ]]; then
   # it to the staged binary immediately before the real preflight hook runs.
   # This modifies only the runner's tap, never the published package.
   python3 - "$cask_path" <<'PY'
-from pathlib import Path
 import sys
+from pathlib import Path
 
 path = Path(sys.argv[1])
 source = path.read_text()
-marker = "  preflight do\n"
+marker = "    preflight_steps do\n"
 if source.count(marker) != 1:
-    raise SystemExit("Expected one preflight hook before completion generation")
-fixture = '''    if OS.mac?
-      system_command "/usr/bin/xattr", args: ["-w", "com.apple.quarantine", "0081;#{Time.now.to_i.to_s(16)};tailctl-ci;00000000-0000-4000-8000-000000000000", "#{staged_path}/tailctl"], must_succeed: true
-    end
+    raise SystemExit("Expected one preflight_steps stanza before completion generation")
+fixture = '''      run "/usr/bin/xattr", args: ["-w", "com.apple.quarantine", "0081;00000000;tailctl-ci;00000000-0000-4000-8000-000000000000", "{{staged_path}}/tailctl"], must_succeed: true
 '''
 path.write_text(source.replace(marker, marker + fixture, 1))
 PY
 fi
 
-brew install --cask davidcollom/tailctl/tailctl
+install_log="$(mktemp)"
+trap 'rm -f "$install_log"' EXIT
+brew install --cask davidcollom/tailctl/tailctl 2>&1 | tee "$install_log"
+if grep -E 'Warning: Calling .*flight.* is deprecated' "$install_log"; then
+  echo 'Deprecated cask lifecycle stanza detected' >&2
+  exit 1
+fi
 test "$(tailctl --version)" = "tailctl version $expected_version"
 tailctl api list -o json
 

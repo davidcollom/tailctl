@@ -77,3 +77,10 @@ These are local HTTP integration fixtures, not authenticated tests against a liv
 - GoReleaser 2.18.2 configuration check and a six-platform publishing-disabled snapshot passed. The generated preflight body matches the repaired cask. Actionlint v1.7.12, workflow YAML parsing, Bash syntax validation and release-policy Node tests passed.
 - CI and release smoke checks now verify executable version, API catalogue and Bash/Zsh/Fish completion files. On macOS they deliberately add quarantine to the staged binary before the real preflight hook, then require the installed executable to have no quarantine attribute. Native execution is verified by GitHub's macOS job, not this Linux workspace.
 - This is a scoped Homebrew installation workaround; the binaries are still not Apple Developer ID signed/notarised. Cosign signing remains unchanged.
+
+## Homebrew structured lifecycle steps
+
+- Migrated the current cask from deprecated `preflight` Ruby blocks to macOS-scoped `preflight_steps` and a literal `run` step. It retains fail-on-error attribute querying/removal and targets only the staged executable.
+- GoReleaser's legacy hooks still emit deprecated blocks, so the template now supplies the supported stanza through `custom_block`. The Homebrew install-time `{{staged_path}}` token survives Go template rendering unchanged.
+- GoReleaser configuration and the six-platform snapshot passed; the generated structured stanza matches the current cask. Actionlint and shell/embedded Python syntax validation passed.
+- Native macOS CI injects quarantine through the structured `run` DSL and now fails if the install emits a deprecated flight-block warning, in addition to checking version, quarantine removal and completion files.

@@ -49,7 +49,7 @@ brew upgrade --cask davidcollom/tailctl/tailctl
 
 The cask selects the macOS/Linux amd64 or arm64 release archive and verifies its SHA-256 checksum. It installs the binary and Bash, Zsh and Fish completion scripts; Go is not required. Use current Homebrew with Linux cask and completion-generation support. The commands above become available only after GoReleaser publishes `Casks/tailctl.rb` on `main`; there is no placeholder package pointing at a nonexistent release. Public source and public release assets are the intended distribution model.
 
-Initial release binaries are not Apple-signed or notarised. The macOS cask checks and removes the quarantine attribute from the staged `tailctl` binary only in **preflight**, before Homebrew executes it to generate completions. Attribute read/removal failures stop installation rather than silently leaving a blocked binary. This requires trusting the release directly; Apple signing/notarisation can be added later. The hook is skipped on Linux.
+Initial release binaries are not Apple-signed or notarised. The macOS cask checks and removes the quarantine attribute from the staged `tailctl` binary only using **`preflight_steps`**, before Homebrew executes it to generate completions. Attribute read/removal failures stop installation rather than silently leaving a blocked binary. This requires trusting the release directly; Apple signing/notarisation can be added later. The hook is skipped on Linux.
 
 ### Build from source
 
@@ -460,7 +460,7 @@ Updates open pull requests and run normal CI; they are not automatically merged.
 
 ## Troubleshooting
 
-If an earlier Homebrew installation reports **“Apple could not verify tailctl is free of malware”**, update the tap and reinstall so the corrected preflight hook runs:
+If an earlier Homebrew installation reports **“Apple could not verify tailctl is free of malware”**, update the tap and reinstall so the corrected `preflight_steps` stanza runs:
 
 ```sh
 brew update

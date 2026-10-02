@@ -54,16 +54,14 @@ homebrew_casks:
       executable: tailctl
       shell_parameter_format: cobra
       shells: [bash, zsh, fish]
-    # Completion generation executes the binary before postflight. Handle quarantine
-    # in preflight, scoped to this binary, and report failures instead of hiding them.
-    # Cosign signatures do not provide Apple signing/notarisation.
-    hooks:
-      pre:
-        install: |
-          if OS.mac?
-            binary_path = "#{staged_path}/tailctl"
-            attributes = system_command "/usr/bin/xattr", args: [binary_path], must_succeed: true
-            if attributes.stdout.lines.map(&:strip).include?("com.apple.quarantine")
-              system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", binary_path], must_succeed: true
-            end
-          end
+    # Structured steps avoid Homebrew's deprecated Ruby flight blocks.
+    # Quarantine is removed only from this binary, before completion generation.
+    # Preserve Homebrew's install-time token through GoReleaser's Go templates.
+    custom_block: |
+      on_macos do
+        preflight_steps do
+          run "/bin/sh",
+              args: ["-c", 'set -eu; attributes=$(/usr/bin/xattr "$1"); if printf "%s\n" "$attributes" | /usr/bin/grep -Fxq com.apple.quarantine; then /usr/bin/xattr -d com.apple.quarantine "$1"; fi', "tailctl-quarantine", "{{ "{{staged_path}}" }}/tailctl"],
+              must_succeed: true
+        end
+      end
