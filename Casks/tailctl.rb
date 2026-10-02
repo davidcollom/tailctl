@@ -8,25 +8,25 @@ cask "tailctl" do
     end
   end
 
-  version "0.0.4"
+  version "0.0.5"
 
   on_macos do
     on_arm do
-      sha256 "04ff1a9e49189d6319a9ba66674ef3245e9c0810b114a87a4b32200456e6eed7"
+      sha256 "542685515445a9d4ca36f78a32035a4c0987087e5d61340cd1b73df7f8c3e347"
       url "https://github.com/davidcollom/tailctl/releases/download/v#{version}/tailctl_#{version}_darwin_arm64.tar.gz"
     end
     on_intel do
-      sha256 "74fbb15640da831b9e58f05b7a6ba5e2075aca08e462feeba16aed01ca2b820b"
+      sha256 "e8d94adc2e794c0c7c3c53f464f3b1575dc1e7fe3421be31ca14d080c6426ee3"
       url "https://github.com/davidcollom/tailctl/releases/download/v#{version}/tailctl_#{version}_darwin_amd64.tar.gz"
     end
   end
   on_linux do
     on_arm do
-      sha256 "87e8442f999dcdea7ccc8b6a91a35b19e9e3339c2eb42bcaa2e4e7ae92e04958"
+      sha256 "77544717f89ff4268b019d0e5d076cc27b46bb3b3eb5e311edf1c22170f812d4"
       url "https://github.com/davidcollom/tailctl/releases/download/v#{version}/tailctl_#{version}_linux_arm64.tar.gz"
     end
     on_intel do
-      sha256 "317d389f437d36d649058659942d1f4783f2feec2773d3d9168c674e185e6cb4"
+      sha256 "51cf6dd34ff58a37985f9d7a591c7b9e2bbb26a63094814f7458dd14ea3f8f30"
       url "https://github.com/davidcollom/tailctl/releases/download/v#{version}/tailctl_#{version}_linux_amd64.tar.gz"
     end
   end
