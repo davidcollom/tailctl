@@ -68,3 +68,12 @@ Validated locally on 2026-10-01 with Go 1.26.0.
 - GoReleaser 2.18.2 configuration validation and a publishing-disabled snapshot passed for all six Linux/macOS/Windows amd64/arm64 targets, producing archives, checksums and the Homebrew cask.
 
 These are local HTTP integration fixtures, not authenticated tests against a live tailnet. Permissions, subscription-specific features and server business rules remain subject to Tailscale's responses. Lists make a single request; cursor pagination is explicit.
+
+## macOS Homebrew installation repair
+
+- Homebrew's artifact ordering runs generated completions before postflight blocks. The previous postflight quarantine hook could therefore run after the first blocked execution, and it ignored failures.
+- The cask and GoReleaser template now use a macOS-only preflight hook to query extended attributes and remove quarantine from the staged `tailctl` executable when present. Read/removal errors abort installation; an absent attribute is handled without attempting deletion.
+- The existing v0.0.3 cask is repaired without changing its version, URLs or archive checksums. Future releases generate the same hook.
+- GoReleaser 2.18.2 configuration check and a six-platform publishing-disabled snapshot passed. The generated preflight body matches the repaired cask. Actionlint v1.7.12, workflow YAML parsing, Bash syntax validation and release-policy Node tests passed.
+- CI and release smoke checks now verify executable version, API catalogue and Bash/Zsh/Fish completion files. On macOS they deliberately add quarantine to the staged binary before the real preflight hook, then require the installed executable to have no quarantine attribute. Native execution is verified by GitHub's macOS job, not this Linux workspace.
+- This is a scoped Homebrew installation workaround; the binaries are still not Apple Developer ID signed/notarised. Cosign signing remains unchanged.

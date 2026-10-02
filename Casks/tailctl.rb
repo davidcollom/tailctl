@@ -33,11 +33,16 @@ cask "tailctl" do
 
   binary "tailctl"
 
-  postflight do
+  preflight do
     if OS.mac?
-      system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "#{staged_path}/tailctl"], must_succeed: false
+      binary_path = "#{staged_path}/tailctl"
+      attributes = system_command "/usr/bin/xattr", args: [binary_path], must_succeed: true
+      if attributes.stdout.lines.map(&:strip).include?("com.apple.quarantine")
+        system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", binary_path], must_succeed: true
+      end
     end
   end
+
   generate_completions_from_executable "tailctl",
     shell_parameter_format: :cobra,
     shells: [:bash, :zsh, :fish]

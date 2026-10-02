@@ -49,7 +49,7 @@ brew upgrade --cask davidcollom/tailctl/tailctl
 
 The cask selects the macOS/Linux amd64 or arm64 release archive and verifies its SHA-256 checksum. It installs the binary and Bash, Zsh and Fish completion scripts; Go is not required. Use current Homebrew with Linux cask and completion-generation support. The commands above become available only after GoReleaser publishes `Casks/tailctl.rb` on `main`; there is no placeholder package pointing at a nonexistent release. Public source and public release assets are the intended distribution model.
 
-Initial release binaries are not Apple-signed or notarised. The macOS cask removes the quarantine attribute from the staged `tailctl` binary only, so the executable can run and generate completions. This requires trusting the release directly; Apple signing/notarisation can be added later. The hook is skipped on Linux.
+Initial release binaries are not Apple-signed or notarised. The macOS cask checks and removes the quarantine attribute from the staged `tailctl` binary only in **preflight**, before Homebrew executes it to generate completions. Attribute read/removal failures stop installation rather than silently leaving a blocked binary. This requires trusting the release directly; Apple signing/notarisation can be added later. The hook is skipped on Linux.
 
 ### Build from source
 
@@ -363,7 +363,7 @@ Upstream describes its OpenAPI schema as unstable. Schema refreshes are explicit
 
 ## CI and releases
 
-The code, release configuration and Homebrew tap live in **one repository**. A stable version tag publishes release archives and then updates `Casks/tailctl.rb` on `main` automatically. The tap uses the same repository's `GITHUB_TOKEN` with `contents: write`; no extra secret or separate tap repository is required. The release workflow serialises runs to avoid simultaneous cask updates. This workflow publishes stable semantic versions only; prerelease tags are rejected by the release gate. Commits made by `GITHUB_TOKEN` do not recursively trigger workflows. After a public stable release, the release workflow installs the published cask on macOS and Linux and checks the CLI version and API catalogue.
+The code, release configuration and Homebrew tap live in **one repository**. A stable version tag publishes release archives and then updates `Casks/tailctl.rb` on `main` automatically. The tap uses the same repository's `GITHUB_TOKEN` with `contents: write`; no extra secret or separate tap repository is required. The release workflow serialises runs to avoid simultaneous cask updates. This workflow publishes stable semantic versions only; prerelease tags are rejected by the release gate. Commits made by `GITHUB_TOKEN` do not recursively trigger workflows. After a public stable release, the release workflow installs the published cask on macOS and Linux and checks the CLI version, API catalogue and all three completion files. The macOS test deliberately quarantines the staged binary before preflight, then verifies that the installed binary has no quarantine attribute. Normal CI also runs this installation test against the proposed cask and the current published archive.
 
 For the first public release, make the repository public, confirm CI passes, then use the manual Release workflow. Repository visibility is managed separately and is not changed by the release workflow. No stable cask has been published until that release completes.
 
@@ -424,6 +424,17 @@ Dependabot checks Go modules (including the pinned OpenAPI generator) and GitHub
 Updates open pull requests and run normal CI; they are not automatically merged. Generator upgrades may require `go generate ./...` and committing generated changes before CI passes. The Tailscale schema still requires an explicit `go run ./cmd/update-schema` refresh and review. The Go toolchain in `go.mod` and the GoReleaser binary version in both workflows are maintained explicitly; Dependabot does not update arbitrary workflow `with.version` values. Cosign uses the installer action's bundled version, so its version follows reviewed installer updates.
 
 ## Troubleshooting
+
+If an earlier Homebrew installation reports **“Apple could not verify tailctl is free of malware”**, update the tap and reinstall so the corrected preflight hook runs:
+
+```sh
+brew update
+brew reinstall --cask davidcollom/tailctl/tailctl
+tailctl --version
+```
+
+For an installation that failed and is not recorded as installed, use `brew install --cask davidcollom/tailctl/tailctl` after updating. The cask-only repair keeps the same released version and archive checksums; a new binary release is not needed. Direct archive downloads still require an explicit macOS approval until Apple Developer ID signing/notarisation is configured. Cosign signatures and checksum verification remain separate from Apple's Gatekeeper checks.
+
 
 | Symptom | What to check |
 | --- | --- |

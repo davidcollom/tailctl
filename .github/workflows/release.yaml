@@ -113,18 +113,10 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install and exercise the published cask
         shell: bash
         env:
           RELEASE_TAG: ${{ needs.authorise.outputs.tag }}
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Homebrew is preinstalled on these GitHub-hosted runners.
-          if ! command -v brew >/dev/null 2>&1; then
-            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          fi
-          brew update
-          brew tap davidcollom/tailctl https://github.com/davidcollom/tailctl.git
-          brew install --cask davidcollom/tailctl/tailctl
-          test "$(tailctl --version)" = "tailctl version ${RELEASE_TAG#v}"
-          tailctl api list -o json
+        run: bash .github/scripts/homebrew-smoke.sh

@@ -54,10 +54,16 @@ homebrew_casks:
       executable: tailctl
       shell_parameter_format: cobra
       shells: [bash, zsh, fish]
-    # Cosign signatures do not provide Apple signing/notarisation. Limit quarantine removal to this binary.
+    # Completion generation executes the binary before postflight. Handle quarantine
+    # in preflight, scoped to this binary, and report failures instead of hiding them.
+    # Cosign signatures do not provide Apple signing/notarisation.
     hooks:
-      post:
+      pre:
         install: |
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "#{staged_path}/tailctl"], must_succeed: false
+            binary_path = "#{staged_path}/tailctl"
+            attributes = system_command "/usr/bin/xattr", args: [binary_path], must_succeed: true
+            if attributes.stdout.lines.map(&:strip).include?("com.apple.quarantine")
+              system_command "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", binary_path], must_succeed: true
+            end
           end
